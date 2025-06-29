@@ -12,11 +12,11 @@
  * - Strip 2: Connected to pin 3, 60 LEDs (GRBW NeoPixels)
  * 
  * PART LAYOUT:
- * The 120 total LEDs are divided into 4 logical parts:
- * - Part 0: Strip1, LEDs 0-29  (first half of strip 1)
- * - Part 1: Strip1, LEDs 30-59 (second half of strip 1)  
- * - Part 2: Strip2, LEDs 0-29  (first half of strip 2)
- * - Part 3: Strip2, LEDs 30-59 (second half of strip 2)
+ * The system uses 4 logical parts, each using 10 LEDs from the 40-59 range:
+ * - Part 0: Strip1, LEDs 40-49 (first 10 LEDs of the active range)
+ * - Part 1: Strip1, LEDs 50-59 (second 10 LEDs of the active range)
+ * - Part 2: Strip2, LEDs 40-49 (first 10 LEDs of the active range)
+ * - Part 3: Strip2, LEDs 50-59 (second 10 LEDs of the active range)
  * 
  * ==============================================================================
  */
@@ -61,12 +61,12 @@ struct LEDPart {
 };
 
 // Define the 4 parts that make up our LED layout
-// This creates a 2x2 grid where each quadrant can be controlled independently
+// Each part uses 10 LEDs from the 40-59 range on each strip
 LEDPart parts[] = {
-  {&strip1, 0, 29, 0, {OFF, 0, 0, false}},   // Part 0: Strip1 first half
-  {&strip1, 30, 59, 0, {OFF, 0, 0, false}},  // Part 1: Strip1 second half
-  {&strip2, 0, 29, 0, {OFF, 0, 0, false}},   // Part 2: Strip2 first half
-  {&strip2, 30, 59, 0, {OFF, 0, 0, false}}   // Part 3: Strip2 second half
+  {&strip1, 40, 49, 0, {OFF, 0, 0, false}},   // Part 0: Strip1 LEDs 40-49
+  {&strip1, 50, 59, 0, {OFF, 0, 0, false}},   // Part 1: Strip1 LEDs 50-59
+  {&strip2, 40, 49, 0, {OFF, 0, 0, false}},   // Part 2: Strip2 LEDs 40-49
+  {&strip2, 50, 59, 0, {OFF, 0, 0, false}}    // Part 3: Strip2 LEDs 50-59
 };
 
 #define NUM_PARTS 4
@@ -292,20 +292,20 @@ void loop()
   // Demonstrate different animation patterns
   // Each pattern shows different ways to compose part animations
   
-  createWavePattern(2000);    // Wave flowing across all parts
-  delay(1000);
+  createWavePattern(800);     // Wave flowing across all parts (was 2000)
+  delay(300);                 // Shorter pause between patterns (was 1000)
   
-  createOppositePairs(2000);  // Opposite corners light up
-  delay(1000);
+  createOppositePairs(600);   // Opposite corners light up (was 2000)
+  delay(300);                 // Shorter pause (was 1000)
   
-  createAllTogether(3000);    // All parts pulse in unison
-  delay(1000);
+  createAllTogether(1000);    // All parts pulse in unison (was 3000)
+  delay(300);                 // Shorter pause (was 1000)
   
-  createBreathingSequence(4000); // Strips breathe alternately
-  delay(1000);
+  createBreathingSequence(1200); // Strips breathe alternately (was 4000)
+  delay(300);                 // Shorter pause (was 1000)
   
-  createChasePattern(3000);   // Parts light up in sequence
-  delay(2000);
+  createChasePattern(1000);   // Parts light up in sequence (was 3000)
+  delay(500);                 // Slightly longer pause before loop restarts (was 2000)
 }
 
 // === HIGH-LEVEL COMPOSITION FUNCTIONS ===
@@ -349,8 +349,8 @@ void createWavePattern(uint16_t duration) {
  * Pattern: Parts 0&3 pulse together, then parts 1&2 pulse together
  * 
  * Visual layout:
- *   [0] [1]
- *   [2] [3]
+ *   Strip1: [0] [1]
+ *   Strip2: [2] [3]
  * First: 0&3 (diagonal), then 1&2 (other diagonal)
  */
 void createOppositePairs(uint16_t duration) {
