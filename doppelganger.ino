@@ -481,11 +481,147 @@ const Animation friendAnimationSaman = {
 };
 
 // Friend composition - single animation that captures intimate, acoustic feeling
-const Composition friendComposition = {
+const Composition friendCompositionSaman = {
   "Friend - Saman",
   &friendAnimationSaman,
   1,
   false  // Play once, total duration ~2:11
+};
+
+// Barry White composition - romantic, fragile, and tender (4:51 duration)
+// Inspired by "Just the Way You Are" - smooth, emotional, with gentle vulnerability
+const Command barryWhiteCommands[] = {
+  // Romantic opening - gentle awakening (0:00-0:45)
+  {ANIMATE, PART_1_MASK, BREATHE, 5000},     // Tender start
+  {WAIT, 0, OFF, 800},                       // Gentle pause
+  {ANIMATE, PART_3_MASK, BREATHE, 5500},     // Back responds lovingly
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1200},                      // Contemplative silence
+  
+  // Fragile connection - tentative touching (0:45-1:30)
+  {ANIMATE, PART_2_MASK, FADE_IN, 3000},     // Slow, vulnerable approach
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, PART_4_MASK, FADE_IN, 3200},     // Hesitant but warm response
+  {WAIT, 0, OFF, 1500},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 4000},     // Gentle retreat
+  {ANIMATE, BACK_MASK, FADE_OUT, 4000},      // Synchronized withdrawal
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000},                      // Longing pause
+  
+  // Tender confession - building intimacy (1:30-2:30)
+  {ANIMATE, FRONT_MASK, BREATHE, 6000},      // Front breathes together
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, BACK_MASK, BREATHE, 6500},       // Back joins in harmony
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, PART_1_MASK, PULSE, 4000},       // Individual expression
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, PART_4_MASK, PULSE, 4000},       // Diagonal response
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, PART_2_MASK, PULSE, 4000},       // Continuing dialogue
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, PART_3_MASK, PULSE, 4000},       // Completing the conversation
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1500},
+  
+  // Emotional peak - fragile vulnerability (2:30-3:45)
+  {ANIMATE, FRONT_MASK, FADE_IN, 2500},      // Building intensity
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 3000},     // Emotional release
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, BACK_MASK, FADE_IN, 2500},       // Supportive response
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, BACK_MASK, FADE_OUT, 3000},      // Gentle comfort
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1200},
+  
+  // Fragile dance - delicate interplay (3:45-4:30)
+  {ANIMATE, PART_1_MASK, BREATHE, 3500},     // Delicate breathing
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, PART_2_MASK, BREATHE, 3500},     // Synchronized breathing
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, PART_3_MASK, BREATHE, 3500},     // Back joins gently
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, PART_4_MASK, BREATHE, 3500},     // All breathing together
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},
+  
+  // Tender resolution - loving acceptance (4:30-4:51)
+  {ANIMATE, FRONT_MASK, FADE_IN, 4000},      // Gentle awakening
+  {WAIT, 0, OFF, 1200},
+  {ANIMATE, BACK_MASK, FADE_IN, 4000},       // Harmonious joining
+  {WAIT, 0, OFF, 2000},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 8000},     // Slow, loving fade
+  {ANIMATE, BACK_MASK, FADE_OUT, 8000},      // Together into silence
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 3000}                       // Final romantic silence
+};
+
+const Animation barryWhiteAnimation = {
+  "Barry White - Just the Way You Are",
+  barryWhiteCommands,
+  sizeof(barryWhiteCommands)/sizeof(Command),
+  false  // Play once, don't loop
+};
+
+// Barry White composition - romantic and fragile
+const Composition barryWhiteComposition = {
+  "Barry White - Just the Way You Are",
+  &barryWhiteAnimation,
+  1,
+  false  // Play once, total duration ~4:51
+};
+
+// Distinctive flash patterns for testing
+const Command startFlashCommands[] = {
+  {ANIMATE, FRONT_MASK, FADE_IN, 200},   // Quick front flash
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 200},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, BACK_MASK, FADE_IN, 200},    // Quick back flash
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, BACK_MASK, FADE_OUT, 200},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, FRONT_MASK, FADE_IN, 200},   // Repeat pattern
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500}
+};
+
+const Command endFlashCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 150},  // Individual flashes
+  {WAIT, 0, OFF, 50},
+  {ANIMATE, PART_1_MASK, FADE_OUT, 150},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_2_MASK, FADE_IN, 150},
+  {WAIT, 0, OFF, 50},
+  {ANIMATE, PART_2_MASK, FADE_OUT, 150},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_3_MASK, FADE_IN, 150},
+  {WAIT, 0, OFF, 50},
+  {ANIMATE, PART_3_MASK, FADE_OUT, 150},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_4_MASK, FADE_IN, 150},
+  {WAIT, 0, OFF, 50},
+  {ANIMATE, PART_4_MASK, FADE_OUT, 150},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000}
+};
+
+const Animation startFlashAnimation = {
+  "Start Flash",
+  startFlashCommands,
+  sizeof(startFlashCommands)/sizeof(Command),
+  false
+};
+
+const Animation endFlashAnimation = {
+  "End Flash",
+  endFlashCommands,
+  sizeof(endFlashCommands)/sizeof(Command),
+  false
 };
 
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
@@ -693,20 +829,20 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Execute the Friend composition - minimalist, intimate, acoustic
-  // Inspired by Ólafur Arnalds - "Saman"
-  // Duration: 2 minutes 11 seconds
-  // Features gentle breathing, contemplative pauses, and intimate dialogue
-  // between front and back parts, creating a doppelganger conversation
-  //
-  // The composition:
-  // - Uses 1-indexed bitmask representation (Part 1 = 0b0001, etc.)
-  // - Automatically respects front/back constraints
-  // - Adapts to dynamic tempo system (20-second acceleration cycles)
-  // - Plays once, then repeats after completion
+  // TEST: Execute Barry White composition with distinctive flash patterns
+  // "Just the Way You Are" - romantic, fragile, and tender
+  // Duration: 4 minutes 51 seconds
+  // Features start/end flash patterns for clear testing boundaries
   
-  executeComposition(friendComposition);
+  // Start flash pattern - Front/Back alternating flashes
+  executeAnimation(startFlashAnimation);
   
-  // Optional: Add a longer pause between repetitions for more intimate feel
-  delay(getDelayDuration(5000));
+  // Main composition
+  executeComposition(friendCompositionSaman);
+  
+  // End flash pattern - Individual part flashes (1-2-3-4)
+  executeAnimation(endFlashAnimation);
+  
+  // Longer pause between repetitions
+  delay(getDelayDuration(8000));
 }
