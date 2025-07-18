@@ -418,6 +418,76 @@ const Composition demoComposition = {
   true  // Loop indefinitely
 };
 
+// Friend composition - minimalist, intimate, acoustic (2:11 duration)
+// Inspired by Ólafur Arnalds - "Saman"
+// Balanced front/back activation with contemplative rhythm
+const Command friendCommands[] = {
+  // Opening dialogue - front and back awaken together (0:00-0:25)
+  {ANIMATE, PART_1_MASK, BREATHE, 4000},     // Part 1 breathes
+  {WAIT, 0, OFF, 500},                       // Brief pause
+  {ANIMATE, PART_3_MASK, BREATHE, 4000},     // Part 3 (back) joins quickly
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},                       // Short reflection
+  
+  // Response - other sides join (0:25-0:50)
+  {ANIMATE, PART_2_MASK, BREATHE, 3500},     // Part 2 responds
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, PART_4_MASK, BREATHE, 3500},     // Part 4 (back) responds
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},
+  
+  // Intimate pairs - front and back alternate (0:50-1:20)
+  {ANIMATE, FRONT_MASK, PULSE, 3000},        // Front together
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, BACK_MASK, PULSE, 3200},         // Back responds
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, FRONT_MASK, BREATHE, 3500},      // Front breathes
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, BACK_MASK, BREATHE, 3800},       // Back breathes
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},
+  
+  // Crossover conversation - A-sides and B-sides (1:20-1:45)
+  {ANIMATE, PART_1_MASK, PULSE, 2500},       // Part 1 
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_4_MASK, PULSE, 2500},       // Part 4 (diagonal response)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_2_MASK, PULSE, 2500},       // Part 2
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_3_MASK, PULSE, 2500},       // Part 3 (diagonal response)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 700},
+  
+  // Closing harmony - gentle fade together (1:45-2:11)
+  {ANIMATE, FRONT_MASK, FADE_IN, 2000},      // Front fades in
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, BACK_MASK, FADE_IN, 2000},       // Back joins
+  {WAIT, 0, OFF, 1500},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 3000},     // Front fades out
+  {ANIMATE, BACK_MASK, FADE_OUT, 3000},      // Back fades out together
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000}                       // Final silence
+};
+
+const Animation friendAnimationSaman = {
+  "Friend",
+  friendCommands,
+  sizeof(friendCommands)/sizeof(Command),
+  false  // Play once, don't loop
+};
+
+// Friend composition - single animation that captures intimate, acoustic feeling
+const Composition friendComposition = {
+  "Friend - Saman",
+  &friendAnimationSaman,
+  1,
+  false  // Play once, total duration ~2:11
+};
+
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
 /*
@@ -623,20 +693,20 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Execute the demo composition which cycles through all 6 animations:
-  // 1. Wave: Front wave (1→2), then back wave (3→4)
-  // 2. Opposite Pairs: Front (1&2) together, then back (3&4) together  
-  // 3. All Together: Rapid front/back alternation
-  // 4. Breathing Sequence: Individual breathing 1→2→3→4
-  // 5. Chase Pattern: Overlapping fades 1→2→3→4
-  // 6. Doppelganger: Complex front/back alternation pattern
+  // Execute the Friend composition - minimalist, intimate, acoustic
+  // Inspired by Ólafur Arnalds - "Saman"
+  // Duration: 2 minutes 11 seconds
+  // Features gentle breathing, contemplative pauses, and intimate dialogue
+  // between front and back parts, creating a doppelganger conversation
   //
-  // Each animation:
+  // The composition:
   // - Uses 1-indexed bitmask representation (Part 1 = 0b0001, etc.)
   // - Automatically respects front/back constraints
   // - Adapts to dynamic tempo system (20-second acceleration cycles)
-  //
-  // The composition loops indefinitely through all animations
+  // - Plays once, then repeats after completion
   
-  executeComposition(demoComposition);
+  executeComposition(friendComposition);
+  
+  // Optional: Add a longer pause between repetitions for more intimate feel
+  delay(getDelayDuration(5000));
 }
