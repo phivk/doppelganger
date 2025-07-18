@@ -200,6 +200,7 @@ struct Composition {
 #define BACK_MASK   0b1100  // Parts 3 & 4
 #define A_SIDE_MASK 0b0101  // Parts 1 & 3 (INVALID - violates constraint)
 #define B_SIDE_MASK 0b1010  // Parts 2 & 4 (INVALID - violates constraint)
+#define ALL_PARTS_MASK 0b1111  // All parts together (allowed for testing)
 
 // === ANIMATION FRAMEWORK PROTOTYPES ===
 void startAnimation(int partIndex, AnimationType type, uint16_t duration);
@@ -221,8 +222,14 @@ void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duratio
 /*
  * Validate that a part mask doesn't violate the front/back constraint
  * Returns true if the mask is valid (never front and back simultaneously)
+ * EXCEPTION: ALL_PARTS_MASK (0b1111) is allowed for testing flash patterns
  */
 bool isValidPartMask(uint8_t partMask) {
+  // Allow ALL_PARTS_MASK for testing purposes
+  if (partMask == ALL_PARTS_MASK) {
+    return true;
+  }
+  
   bool hasFront = (partMask & FRONT_MASK) != 0;  // Check if any front parts (1&2)
   bool hasBack = (partMask & BACK_MASK) != 0;    // Check if any back parts (3&4)
   
@@ -573,39 +580,67 @@ const Composition barryWhiteComposition = {
   false  // Play once, total duration ~4:51
 };
 
-// Distinctive flash patterns for testing
+// Distinctive flash patterns for testing - HARSH AND FAST ALL PARTS SIMULTANEOUSLY
+
 const Command startFlashCommands[] = {
-  {ANIMATE, FRONT_MASK, FADE_IN, 200},   // Quick front flash
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, FRONT_MASK, FADE_OUT, 200},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, BACK_MASK, FADE_IN, 200},    // Quick back flash
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, BACK_MASK, FADE_OUT, 200},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, FRONT_MASK, FADE_IN, 200},   // Repeat pattern
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, FRONT_MASK, FADE_OUT, 200},
+  // Harsh rapid flashes - all parts simultaneously
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on (20ms)
+  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off (20ms)
+  {WAIT, 0, OFF, 100},                       // Brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
+  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
+  {WAIT, 0, OFF, 100},                       // Brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
+  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
+  {WAIT, 0, OFF, 100},                       // Brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
+  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
+  {WAIT, 0, OFF, 100},                       // Brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
+  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 500}
+  {WAIT, 0, OFF, 1000}                       // Pause before main composition
 };
 
 const Command endFlashCommands[] = {
-  {ANIMATE, PART_1_MASK, FADE_IN, 150},  // Individual flashes
-  {WAIT, 0, OFF, 50},
-  {ANIMATE, PART_1_MASK, FADE_OUT, 150},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, PART_2_MASK, FADE_IN, 150},
-  {WAIT, 0, OFF, 50},
-  {ANIMATE, PART_2_MASK, FADE_OUT, 150},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, PART_3_MASK, FADE_IN, 150},
-  {WAIT, 0, OFF, 50},
-  {ANIMATE, PART_3_MASK, FADE_OUT, 150},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, PART_4_MASK, FADE_IN, 150},
-  {WAIT, 0, OFF, 50},
-  {ANIMATE, PART_4_MASK, FADE_OUT, 150},
+  // End: Even more harsh and rapid
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on (10ms)
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
+  {WAIT, 0, OFF, 80},                        // Very brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
+  {WAIT, 0, OFF, 80},                        // Very brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
+  {WAIT, 0, OFF, 80},                        // Very brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
+  {WAIT, 0, OFF, 80},                        // Very brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
+  {WAIT, 0, OFF, 80},                        // Very brief pause
+  
+  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
+  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
+  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
   {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 1000}
 };

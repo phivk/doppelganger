@@ -27,6 +27,7 @@ Back:  [Part 2] [Part 3]
 - Front parts (0 & 1) can be on together
 - Back parts (2 & 3) can be on together
 - Any front + back combination is forbidden
+- To make it clear: there is a constraint of front and back parts not being on at the same time. This is a constraint for the user experience of the compositions, not a hardware constraint
 
 ## Software Architecture
 
