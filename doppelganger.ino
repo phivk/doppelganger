@@ -1,11 +1,11 @@
 /*
  * ==============================================================================
- * DOPPELGÄNGER - Part-Based LED Animation Framework
+ * DOPPELGÄNGER - Declarative LED Animation Framework
  * ==============================================================================
  * 
- * This Arduino sketch implements a flexible animation framework for controlling
- * multiple LED strips divided into logical "parts" that can be animated 
- * independently or in coordination.
+ * This Arduino sketch implements a declarative animation framework for controlling
+ * multiple LED strips divided into logical "parts" that can be animated using
+ * command-based compositions with 1-indexed bitmask representation.
  * 
  * HARDWARE SETUP:
  * - Strip 1: Connected to pin 2, 60 LEDs (GRBW NeoPixels)
@@ -13,23 +13,33 @@
  * - Strip 3: Connected to pin 4, 60 LEDs (GRBW NeoPixels)
  * - Strip 4: Connected to pin 5, 60 LEDs (GRBW NeoPixels)
  * 
- * PART LAYOUT:
+ * PART LAYOUT (1-INDEXED):
  * The system uses 4 logical parts arranged in a frame:
- * - Part 0: Strip1, LEDs 40-59 (Front A-Side)
- * - Part 1: Strip2, LEDs 40-59 (Front B-Side)
- * - Part 2: Strip3, LEDs 40-59 (Back A-Side)
- * - Part 3: Strip4, LEDs 40-59 (Back B-Side)
+ * - Part 1: Strip1, LEDs 40-59 (Front A-Side) - Bitmask: 0b0001
+ * - Part 2: Strip2, LEDs 40-59 (Front B-Side) - Bitmask: 0b0010
+ * - Part 3: Strip3, LEDs 40-59 (Back A-Side)  - Bitmask: 0b0100
+ * - Part 4: Strip4, LEDs 40-59 (Back B-Side)  - Bitmask: 0b1000
  * 
  * Physical Layout:
- *   Front: [Part 0] [Part 1]
- *   Back:  [Part 2] [Part 3]
+ *   Front: [Part 1] [Part 2]
+ *   Back:  [Part 3] [Part 4]
  *          A Side   B Side
  * 
- * CONSTRAINTS:
+ * CRITICAL CONSTRAINT:
  * - Only FRONT or BACK can be lit at any time, never both
- * - Front parts (0 & 1) can be on together
- * - Back parts (2 & 3) can be on together
- * - Any front + back combination is forbidden
+ * - Front parts (1 & 2) can be on together - FRONT_MASK: 0b0011
+ * - Back parts (3 & 4) can be on together  - BACK_MASK:  0b1100
+ * - Any front + back combination is forbidden and automatically validated
+ * 
+ * DECLARATIVE SYSTEM:
+ * Animations are defined using command arrays with three command types:
+ * - ANIMATE: Start animation on parts specified by bitmask
+ * - WAIT: Pause for specified duration
+ * - WAIT_COMPLETE: Wait for all active animations to finish
+ * 
+ * TEMPO SYSTEM:
+ * 20-second cycles with dynamic tempo: slow (0.3x) → fast (3.0x) → slow
+ * All durations automatically adjust to current tempo for evolving experience
  * 
  * ==============================================================================
  */
@@ -78,12 +88,13 @@ struct LEDPart {
 };
 
 // Define the 4 parts that make up our LED layout
-// Each part uses the full 40-59 LED range on each strip
+// NOTE: Array is 0-indexed for internal use, but bitmasks are 1-indexed
+// Part 1 (bitmask 0b0001) maps to parts[0], Part 2 (0b0010) to parts[1], etc.
 LEDPart parts[] = {
-  {&strip1, 40, 59, 0, {OFF, 0, 0, false}},   // Part 0: Strip1 LEDs 40-59
-  {&strip2, 40, 59, 0, {OFF, 0, 0, false}},   // Part 1: Strip2 LEDs 40-59
-  {&strip3, 40, 59, 0, {OFF, 0, 0, false}},   // Part 2: Strip3 LEDs 40-59
-  {&strip4, 40, 59, 0, {OFF, 0, 0, false}}    // Part 3: Strip4 LEDs 40-59
+  {&strip1, 40, 59, 0, {OFF, 0, 0, false}},   // parts[0] = Part 1: Strip1 LEDs 40-59
+  {&strip2, 40, 59, 0, {OFF, 0, 0, false}},   // parts[1] = Part 2: Strip2 LEDs 40-59
+  {&strip3, 40, 59, 0, {OFF, 0, 0, false}},   // parts[2] = Part 3: Strip3 LEDs 40-59
+  {&strip4, 40, 59, 0, {OFF, 0, 0, false}}    // parts[3] = Part 4: Strip4 LEDs 40-59
 };
 
 #define NUM_PARTS 4
@@ -146,6 +157,42 @@ uint16_t getDelayDuration(uint16_t baseDelay) {
   return (uint16_t)(baseDelay / tempo.currentSpeed);
 }
 
+// === DECLARATIVE COMPOSITION SYSTEM ===
+
+// Command types for declarative animation sequences
+enum CommandType {
+  ANIMATE,      // Start animation on specified parts
+  WAIT,         // Wait for specified duration
+  WAIT_COMPLETE // Wait for all active animations to complete
+};
+
+// Animation command structure
+struct Command {
+  CommandType cmd;
+  uint8_t partMask;     // Bitmask: bit 0=Part1, bit 1=Part2, bit 2=Part3, bit 3=Part4
+  AnimationType type;
+  uint16_t duration;
+};
+
+// Composition definition
+struct Composition {
+  const char* name;
+  const Command* commands;
+  uint8_t commandCount;
+  bool looping;
+};
+
+// Part bitmask definitions (1-indexed)
+#define PART_1_MASK 0b0001  // Front A-Side
+#define PART_2_MASK 0b0010  // Front B-Side  
+#define PART_3_MASK 0b0100  // Back A-Side
+#define PART_4_MASK 0b1000  // Back B-Side
+
+#define FRONT_MASK  0b0011  // Parts 1 & 2
+#define BACK_MASK   0b1100  // Parts 3 & 4
+#define A_SIDE_MASK 0b0101  // Parts 1 & 3 (INVALID - violates constraint)
+#define B_SIDE_MASK 0b1010  // Parts 2 & 4 (INVALID - violates constraint)
+
 // === ANIMATION FRAMEWORK PROTOTYPES ===
 void startAnimation(int partIndex, AnimationType type, uint16_t duration);
 void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint16_t duration);
@@ -155,7 +202,13 @@ void updatePartAnimation(int partIndex);
 void clearAllParts();
 bool isAnyPartActive();
 
-// === HIGH-LEVEL COMPOSITION FUNCTIONS ===
+// === DECLARATIVE COMPOSITION FUNCTIONS ===
+bool isValidPartMask(uint8_t partMask);
+void executeCommand(const Command& cmd);
+void executeComposition(const Composition& comp);
+void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration);
+
+// === HIGH-LEVEL COMPOSITION FUNCTIONS (LEGACY) ===
 void createWavePattern(uint16_t baseDuration);
 void createOppositePairs(uint16_t baseDuration);
 void createAllTogether(uint16_t baseDuration);
@@ -163,17 +216,200 @@ void createBreathingSequence(uint16_t baseDuration);
 void createChasePattern(uint16_t baseDuration);
 void createDoppelgangerPattern(uint16_t baseDuration);
 
+// === DECLARATIVE COMPOSITION IMPLEMENTATIONS ===
+
+/*
+ * Validate that a part mask doesn't violate the front/back constraint
+ * Returns true if the mask is valid (never front and back simultaneously)
+ */
+bool isValidPartMask(uint8_t partMask) {
+  bool hasFront = (partMask & FRONT_MASK) != 0;  // Check if any front parts (1&2)
+  bool hasBack = (partMask & BACK_MASK) != 0;    // Check if any back parts (3&4)
+  
+  return !(hasFront && hasBack);  // Invalid if both front AND back are on
+}
+
+/*
+ * Start animations on all parts specified in the bitmask
+ * partMask uses 1-indexed representation: bit 0=Part1, bit 1=Part2, etc.
+ */
+void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration) {
+  for (int i = 0; i < NUM_PARTS; i++) {
+    if (partMask & (1 << i)) {  // Check if bit i is set
+      startAnimation(i, type, duration);  // i is 0-indexed for array access
+    }
+  }
+}
+
+/*
+ * Execute a single animation command
+ */
+void executeCommand(const Command& cmd) {
+  switch (cmd.cmd) {
+    case ANIMATE:
+      if (!isValidPartMask(cmd.partMask)) {
+        // Skip invalid commands - could add error handling here
+        return;
+      }
+      animatePartsFromMask(cmd.partMask, cmd.type, getAnimationDuration(cmd.duration));
+      break;
+      
+    case WAIT:
+      delay(getDelayDuration(cmd.duration));
+      break;
+      
+    case WAIT_COMPLETE:
+      while (isAnyPartActive()) {
+        updateAllAnimations();
+        delay(10);
+      }
+      break;
+  }
+}
+
+/*
+ * Execute a complete composition
+ */
+void executeComposition(const Composition& comp) {
+  clearAllParts();
+  
+  do {
+    for (int i = 0; i < comp.commandCount; i++) {
+      executeCommand(comp.commands[i]);
+      
+      // Update animations during execution
+      while (isAnyPartActive()) {
+        updateAllAnimations();
+        delay(10);
+      }
+    }
+  } while (comp.looping);
+}
+
+// === COMPOSITION DEFINITIONS ===
+
+// Wave Pattern: Front wave (1→2), then Back wave (3→4)
+const Command waveCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 400},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_2_MASK, FADE_IN, 400},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 400},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, FADE_IN, 400},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_4_MASK, FADE_IN, 400},
+  {ANIMATE, BACK_MASK, FADE_OUT, 400}
+};
+
+// Opposite Pairs: Front (1&2) together, then Back (3&4) together
+const Command oppositePairsCommands[] = {
+  {ANIMATE, FRONT_MASK, PULSE, 600},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, BACK_MASK, PULSE, 600},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// All Together: Rapid alternation between front and back
+const Command allTogetherCommands[] = {
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100}
+};
+
+// Breathing Sequence: 1→2→3→4 individual breathing
+const Command breathingSequenceCommands[] = {
+  {ANIMATE, PART_1_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_2_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_3_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_4_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Chase Pattern: 1→2→3→4 with overlapping fades
+const Command chasePatternCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_1_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_2_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_2_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_3_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_3_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_4_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_4_MASK, FADE_OUT, 250},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Doppelganger Pattern: Showcases front/back alternation
+const Command doppelgangerPatternCommands[] = {
+  {ANIMATE, FRONT_MASK, PULSE, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, BACK_MASK, PULSE, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_1_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_4_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Composition definitions
+const Composition compositions[] = {
+  {"Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false},
+  {"Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false},
+  {"All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false},
+  {"Breathing Sequence", breathingSequenceCommands, sizeof(breathingSequenceCommands)/sizeof(Command), false},
+  {"Chase Pattern", chasePatternCommands, sizeof(chasePatternCommands)/sizeof(Command), false},
+  {"Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false}
+};
+
+#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition))
+
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
 /*
  * Start an animation on a single part
  * 
- * partIndex: Which part to animate (0-3)
+ * partIndex: Which part to animate (0-3, maps to Parts 1-4 in bitmask system)
  * type: What kind of animation to run
  * duration: How long the animation should take in milliseconds
  * 
- * This is the fundamental building block - all other animation functions
- * ultimately call this to start individual part animations.
+ * NOTE: This function uses 0-indexed arrays internally but the declarative
+ * system uses 1-indexed bitmasks. partIndex 0 = Part 1, partIndex 1 = Part 2, etc.
+ * 
+ * This is the fundamental building block - the declarative system calls this
+ * via animatePartsFromMask() to start individual part animations.
  */
 void startAnimation(int partIndex, AnimationType type, uint16_t duration) {
   if (partIndex >= NUM_PARTS) return;
@@ -189,8 +425,11 @@ void startAnimation(int partIndex, AnimationType type, uint16_t duration) {
  * Start the same animation on multiple parts simultaneously
  * 
  * Example usage:
- *   int corners[] = {0, 3}; // Opposite corners
+ *   int corners[] = {0, 3}; // Array indices 0,3 = Parts 1,4 in bitmask system
  *   startAnimationOnParts(corners, 2, PULSE, 2000);
+ * 
+ * NOTE: This legacy function uses 0-indexed arrays. The new declarative system
+ * uses animatePartsFromMask() with 1-indexed bitmasks instead.
  * 
  * This creates synchronized effects across multiple parts.
  */
@@ -204,8 +443,11 @@ void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint
  * Start animations in sequence with delays between each
  * 
  * Example usage:
- *   int wave[] = {0, 1, 2, 3}; // All parts in order
+ *   int wave[] = {0, 1, 2, 3}; // Array indices = Parts 1,2,3,4 in bitmask system
  *   startSequentialAnimation(wave, 4, FADE_IN, 2000, 500);
+ * 
+ * NOTE: This legacy function uses 0-indexed arrays. The new declarative system
+ * uses command sequences with ANIMATE commands and WAIT commands instead.
  * 
  * This creates wave-like effects that flow across the parts.
  * Each animation starts 'delayBetween' milliseconds after the previous one.
@@ -398,27 +640,23 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Demonstrate different animation patterns that respect the physical constraints
-  // Each pattern ensures A-side parts (0&2) and B-side parts (1&3) are never on simultaneously
-  // Now with dynamic tempo that accelerates and decelerates over time!
+  // Execute all 6 pre-defined compositions using the declarative system:
+  // 1. Wave: Front wave (1→2), then back wave (3→4)
+  // 2. Opposite Pairs: Front (1&2) together, then back (3&4) together  
+  // 3. All Together: Rapid front/back alternation
+  // 4. Breathing Sequence: Individual breathing 1→2→3→4
+  // 5. Chase Pattern: Overlapping fades 1→2→3→4
+  // 6. Doppelganger: Complex front/back alternation pattern
+  //
+  // Each composition:
+  // - Uses 1-indexed bitmask representation (Part 1 = 0b0001, etc.)
+  // - Automatically respects front/back constraints
+  // - Adapts to dynamic tempo system (20-second acceleration cycles)
   
-  createWavePattern(800);         // Constraint-safe wave: 0→3→1→2
-  delay(getDelayDuration(300));
-  
-  createOppositePairs(600);       // Only diagonal pairs: 0&3, then 1&2
-  delay(getDelayDuration(300));
-  
-  createAllTogether(1000);        // Rapid alternating diagonals
-  delay(getDelayDuration(300));
-  
-  createBreathingSequence(1200);  // Sequential breathing: 0→3→1→2
-  delay(getDelayDuration(300));
-  
-  createChasePattern(1000);       // Constraint-safe chase
-  delay(getDelayDuration(300));
-  
-  createDoppelgangerPattern(800); // Special doppelganger effect
-  delay(getDelayDuration(500));
+  for (int i = 0; i < NUM_COMPOSITIONS; i++) {
+    executeComposition(compositions[i]);
+    delay(getDelayDuration(300));  // Tempo-adjusted pause between compositions
+  }
 }
 
 // === HIGH-LEVEL COMPOSITION FUNCTIONS ===
@@ -426,11 +664,13 @@ void loop()
 // the basic animation functions in various ways.
 
 /*
- * WAVE PATTERN
+ * WAVE PATTERN (LEGACY FUNCTION)
  * Creates a wave effect that alternates between front and back.
  * Wave flows across the front, then across the back.
  * 
  * Pattern: Front wave (0 → 1), then Back wave (2 → 3)
+ * NOTE: Uses 0-indexed arrays. See waveCommands[] for declarative version
+ * using 1-indexed bitmasks: Part 1 → Part 2, then Part 3 → Part 4
  */
 void createWavePattern(uint16_t baseDuration) {
   clearAllParts();
@@ -475,11 +715,13 @@ void createWavePattern(uint16_t baseDuration) {
 }
 
 /*
- * OPPOSITE PAIRS PATTERN  
+ * OPPOSITE PAIRS PATTERN (LEGACY FUNCTION)
  * Alternates between front pairs and back pairs.
  * Shows the "doppelganger" effect by switching between front and back views.
  * 
  * Pattern: Front (0&1) together, then Back (2&3) together
+ * NOTE: Uses 0-indexed arrays. See oppositePairsCommands[] for declarative version
+ * using 1-indexed bitmasks: FRONT_MASK (Parts 1&2), then BACK_MASK (Parts 3&4)
  */
 void createOppositePairs(uint16_t baseDuration) {
   clearAllParts();
@@ -509,11 +751,13 @@ void createOppositePairs(uint16_t baseDuration) {
 }
 
 /*
- * ALL TOGETHER PATTERN
+ * ALL TOGETHER PATTERN (LEGACY FUNCTION)
  * Since we can't have front and back on simultaneously,
  * this alternates rapidly between "all front" and "all back".
  * 
  * Pattern: Front (0&1) and Back (2&3) alternate rapidly
+ * NOTE: Uses 0-indexed arrays. See allTogetherCommands[] for declarative version
+ * using 1-indexed bitmasks: FRONT_MASK and BACK_MASK alternating
  */
 void createAllTogether(uint16_t baseDuration) {
   clearAllParts();
@@ -553,10 +797,12 @@ void createAllTogether(uint16_t baseDuration) {
 }
 
 /*
- * BREATHING SEQUENCE PATTERN
+ * BREATHING SEQUENCE PATTERN (LEGACY FUNCTION)
  * Each part breathes individually, alternating between front and back.
  * 
  * Pattern: Front A (0) → Front B (1) → Back A (2) → Back B (3)
+ * NOTE: Uses 0-indexed arrays. See breathingSequenceCommands[] for declarative version
+ * using 1-indexed bitmasks: Part 1 → Part 2 → Part 3 → Part 4
  */
 void createBreathingSequence(uint16_t baseDuration) {
   clearAllParts();
@@ -582,11 +828,13 @@ void createBreathingSequence(uint16_t baseDuration) {
 }
 
 /*
- * CHASE PATTERN
+ * CHASE PATTERN (LEGACY FUNCTION)
  * Creates a chase effect that moves across front, then back.
  * Each part lights up briefly in sequence.
  * 
  * Pattern: 0 → 1 → 2 → 3 with overlapping fades
+ * NOTE: Uses 0-indexed arrays. See chasePatternCommands[] for declarative version
+ * using 1-indexed bitmasks: Part 1 → Part 2 → Part 3 → Part 4
  */
 void createChasePattern(uint16_t baseDuration) {
   clearAllParts();
@@ -618,11 +866,13 @@ void createChasePattern(uint16_t baseDuration) {
 }
 
 /*
- * DOPPELGANGER SPECIAL PATTERN
+ * DOPPELGANGER SPECIAL PATTERN (LEGACY FUNCTION)
  * Showcases the front/back alternation effect.
  * Shows front view, then back view, creating a "flip" effect.
  * 
  * Pattern: All Front → All Back → Individual Front → Individual Back
+ * NOTE: Uses 0-indexed arrays. See doppelgangerPatternCommands[] for declarative version
+ * using 1-indexed bitmasks and more complex sequencing
  */
 void createDoppelgangerPattern(uint16_t baseDuration) {
   clearAllParts();
