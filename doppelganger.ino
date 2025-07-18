@@ -174,11 +174,19 @@ struct Command {
   uint16_t duration;
 };
 
-// Composition definition
-struct Composition {
+// Animation definition
+struct Animation {
   const char* name;
   const Command* commands;
   uint8_t commandCount;
+  bool looping;
+};
+
+// Composition definition - a sequence of animations
+struct Composition {
+  const char* name;
+  const Animation* animations;
+  uint8_t animationCount;
   bool looping;
 };
 
@@ -195,28 +203,20 @@ struct Composition {
 
 // === ANIMATION FRAMEWORK PROTOTYPES ===
 void startAnimation(int partIndex, AnimationType type, uint16_t duration);
-void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint16_t duration);
-void startSequentialAnimation(int* partIndices, int count, AnimationType type, uint16_t duration, uint16_t delayBetween);
 void updateAllAnimations();
 void updatePartAnimation(int partIndex);
 void clearAllParts();
 bool isAnyPartActive();
 
-// === DECLARATIVE COMPOSITION FUNCTIONS ===
+// === DECLARATIVE ANIMATION FUNCTIONS ===
 bool isValidPartMask(uint8_t partMask);
 void executeCommand(const Command& cmd);
+void executeAnimation(const Animation& anim);
 void executeComposition(const Composition& comp);
 void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration);
 
-// === HIGH-LEVEL COMPOSITION FUNCTIONS (LEGACY) ===
-void createWavePattern(uint16_t baseDuration);
-void createOppositePairs(uint16_t baseDuration);
-void createAllTogether(uint16_t baseDuration);
-void createBreathingSequence(uint16_t baseDuration);
-void createChasePattern(uint16_t baseDuration);
-void createDoppelgangerPattern(uint16_t baseDuration);
 
-// === DECLARATIVE COMPOSITION IMPLEMENTATIONS ===
+// === DECLARATIVE ANIMATION IMPLEMENTATIONS ===
 
 /*
  * Validate that a part mask doesn't violate the front/back constraint
@@ -268,14 +268,14 @@ void executeCommand(const Command& cmd) {
 }
 
 /*
- * Execute a complete composition
+ * Execute a single animation
  */
-void executeComposition(const Composition& comp) {
+void executeAnimation(const Animation& anim) {
   clearAllParts();
   
   do {
-    for (int i = 0; i < comp.commandCount; i++) {
-      executeCommand(comp.commands[i]);
+    for (int i = 0; i < anim.commandCount; i++) {
+      executeCommand(anim.commands[i]);
       
       // Update animations during execution
       while (isAnyPartActive()) {
@@ -283,10 +283,22 @@ void executeComposition(const Composition& comp) {
         delay(10);
       }
     }
+  } while (anim.looping);
+}
+
+/*
+ * Execute a complete composition (sequence of animations)
+ */
+void executeComposition(const Composition& comp) {
+  do {
+    for (int i = 0; i < comp.animationCount; i++) {
+      executeAnimation(comp.animations[i]);
+      delay(getDelayDuration(300));  // Tempo-adjusted pause between animations
+    }
   } while (comp.looping);
 }
 
-// === COMPOSITION DEFINITIONS ===
+// === ANIMATION DEFINITIONS ===
 
 // Wave Pattern: Front wave (1→2), then Back wave (3→4)
 const Command waveCommands[] = {
@@ -384,8 +396,8 @@ const Command doppelgangerPatternCommands[] = {
   {WAIT_COMPLETE, 0, OFF, 0}
 };
 
-// Composition definitions
-const Composition compositions[] = {
+// Animation definitions
+const Animation animations[] = {
   {"Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false},
   {"Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false},
   {"All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false},
@@ -394,7 +406,17 @@ const Composition compositions[] = {
   {"Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false}
 };
 
-#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition))
+#define NUM_ANIMATIONS (sizeof(animations)/sizeof(Animation))
+
+// === COMPOSITION DEFINITIONS ===
+
+// Demo composition that cycles through all available animations
+const Composition demoComposition = {
+  "Demo - All Animations",
+  animations,
+  NUM_ANIMATIONS,
+  true  // Loop indefinitely
+};
 
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
@@ -421,45 +443,6 @@ void startAnimation(int partIndex, AnimationType type, uint16_t duration) {
   part->animation.isActive = true;
 }
 
-/*
- * Start the same animation on multiple parts simultaneously
- * 
- * Example usage:
- *   int corners[] = {0, 3}; // Array indices 0,3 = Parts 1,4 in bitmask system
- *   startAnimationOnParts(corners, 2, PULSE, 2000);
- * 
- * NOTE: This legacy function uses 0-indexed arrays. The new declarative system
- * uses animatePartsFromMask() with 1-indexed bitmasks instead.
- * 
- * This creates synchronized effects across multiple parts.
- */
-void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint16_t duration) {
-  for (int i = 0; i < count; i++) {
-    startAnimation(partIndices[i], type, duration);
-  }
-}
-
-/*
- * Start animations in sequence with delays between each
- * 
- * Example usage:
- *   int wave[] = {0, 1, 2, 3}; // Array indices = Parts 1,2,3,4 in bitmask system
- *   startSequentialAnimation(wave, 4, FADE_IN, 2000, 500);
- * 
- * NOTE: This legacy function uses 0-indexed arrays. The new declarative system
- * uses command sequences with ANIMATE commands and WAIT commands instead.
- * 
- * This creates wave-like effects that flow across the parts.
- * Each animation starts 'delayBetween' milliseconds after the previous one.
- */
-void startSequentialAnimation(int* partIndices, int count, AnimationType type, uint16_t duration, uint16_t delayBetween) {
-  for (int i = 0; i < count; i++) {
-    startAnimation(partIndices[i], type, duration);
-    if (i < count - 1) { // Don't delay after the last animation
-      delay(delayBetween);
-    }
-  }
-}
 
 /*
  * Update all active animations and refresh the LED strips
@@ -640,7 +623,7 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Execute all 6 pre-defined compositions using the declarative system:
+  // Execute the demo composition which cycles through all 6 animations:
   // 1. Wave: Front wave (1→2), then back wave (3→4)
   // 2. Opposite Pairs: Front (1&2) together, then back (3&4) together  
   // 3. All Together: Rapid front/back alternation
@@ -648,290 +631,12 @@ void loop()
   // 5. Chase Pattern: Overlapping fades 1→2→3→4
   // 6. Doppelganger: Complex front/back alternation pattern
   //
-  // Each composition:
+  // Each animation:
   // - Uses 1-indexed bitmask representation (Part 1 = 0b0001, etc.)
   // - Automatically respects front/back constraints
   // - Adapts to dynamic tempo system (20-second acceleration cycles)
+  //
+  // The composition loops indefinitely through all animations
   
-  for (int i = 0; i < NUM_COMPOSITIONS; i++) {
-    executeComposition(compositions[i]);
-    delay(getDelayDuration(300));  // Tempo-adjusted pause between compositions
-  }
+  executeComposition(demoComposition);
 }
-
-// === HIGH-LEVEL COMPOSITION FUNCTIONS ===
-// These demonstrate different patterns you can create by combining
-// the basic animation functions in various ways.
-
-/*
- * WAVE PATTERN (LEGACY FUNCTION)
- * Creates a wave effect that alternates between front and back.
- * Wave flows across the front, then across the back.
- * 
- * Pattern: Front wave (0 → 1), then Back wave (2 → 3)
- * NOTE: Uses 0-indexed arrays. See waveCommands[] for declarative version
- * using 1-indexed bitmasks: Part 1 → Part 2, then Part 3 → Part 4
- */
-void createWavePattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Front wave: 0 → 1
-  int frontSequence[] = {0, 1};
-  startSequentialAnimation(frontSequence, 2, FADE_IN, duration / 2, duration / 4);
-  
-  // Wait for front wave to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  // Fade out front
-  startSequentialAnimation(frontSequence, 2, FADE_OUT, duration / 2, duration / 4);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(getDelayDuration(200));
-  
-  // Back wave: 2 → 3
-  int backSequence[] = {2, 3};
-  startSequentialAnimation(backSequence, 2, FADE_IN, duration / 2, duration / 4);
-  
-  // Wait for back wave to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  // Fade out back
-  startSequentialAnimation(backSequence, 2, FADE_OUT, duration / 2, duration / 4);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
-/*
- * OPPOSITE PAIRS PATTERN (LEGACY FUNCTION)
- * Alternates between front pairs and back pairs.
- * Shows the "doppelganger" effect by switching between front and back views.
- * 
- * Pattern: Front (0&1) together, then Back (2&3) together
- * NOTE: Uses 0-indexed arrays. See oppositePairsCommands[] for declarative version
- * using 1-indexed bitmasks: FRONT_MASK (Parts 1&2), then BACK_MASK (Parts 3&4)
- */
-void createOppositePairs(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(500);
-  
-  // Front pair: Parts 0 and 1 together
-  int frontPair[] = {0, 1};
-  startAnimationOnParts(frontPair, 2, PULSE, duration);
-  
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Back pair: Parts 2 and 3 together
-  int backPair[] = {2, 3};
-  startAnimationOnParts(backPair, 2, PULSE, duration);
-  
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
-/*
- * ALL TOGETHER PATTERN (LEGACY FUNCTION)
- * Since we can't have front and back on simultaneously,
- * this alternates rapidly between "all front" and "all back".
- * 
- * Pattern: Front (0&1) and Back (2&3) alternate rapidly
- * NOTE: Uses 0-indexed arrays. See allTogetherCommands[] for declarative version
- * using 1-indexed bitmasks: FRONT_MASK and BACK_MASK alternating
- */
-void createAllTogether(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Alternate between front and back rapidly
-  uint32_t startTime = millis();
-  uint16_t switchInterval = duration / 10; // Switch every 1/10th of duration
-  
-  while (millis() - startTime < duration) {
-    // Front parts: 0 & 1
-    int frontParts[] = {0, 1};
-    startAnimationOnParts(frontParts, 2, FADE_IN, switchInterval);
-    
-    // Wait for switch interval
-    uint32_t phaseStart = millis();
-    while (millis() - phaseStart < switchInterval) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    // Clear and switch to back parts: 2 & 3
-    clearAllParts();
-    int backParts[] = {2, 3};
-    startAnimationOnParts(backParts, 2, FADE_IN, switchInterval);
-    
-    // Wait for switch interval
-    phaseStart = millis();
-    while (millis() - phaseStart < switchInterval) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    clearAllParts();
-  }
-}
-
-/*
- * BREATHING SEQUENCE PATTERN (LEGACY FUNCTION)
- * Each part breathes individually, alternating between front and back.
- * 
- * Pattern: Front A (0) → Front B (1) → Back A (2) → Back B (3)
- * NOTE: Uses 0-indexed arrays. See breathingSequenceCommands[] for declarative version
- * using 1-indexed bitmasks: Part 1 → Part 2 → Part 3 → Part 4
- */
-void createBreathingSequence(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(500);
-  
-  // Breathing sequence: 0 → 1 → 2 → 3
-  int sequence[] = {0, 1, 2, 3};
-  
-  for (int i = 0; i < 4; i++) {
-    startAnimation(sequence[i], BREATHE, duration);
-    
-    while (isAnyPartActive()) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    if (i < 3) { // Don't delay after the last part
-      delay(delayTime);
-    }
-  }
-}
-
-/*
- * CHASE PATTERN (LEGACY FUNCTION)
- * Creates a chase effect that moves across front, then back.
- * Each part lights up briefly in sequence.
- * 
- * Pattern: 0 → 1 → 2 → 3 with overlapping fades
- * NOTE: Uses 0-indexed arrays. See chasePatternCommands[] for declarative version
- * using 1-indexed bitmasks: Part 1 → Part 2 → Part 3 → Part 4
- */
-void createChasePattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Chase pattern: 0 → 1 → 2 → 3
-  int sequence[] = {0, 1, 2, 3};
-  
-  for (int i = 0; i < 4; i++) {
-    startAnimation(sequence[i], FADE_IN, duration / 4);
-    
-    // Wait a bit, then start fading out while next one starts
-    delay(duration / 8);
-    startAnimation(sequence[i], FADE_OUT, duration / 4);
-    
-    // Keep updating animations during the chase
-    for (int j = 0; j < 20; j++) {
-      updateAllAnimations();
-      delay(duration / 160); // Small delay for smooth animation
-    }
-  }
-  
-  // Wait for all animations to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
-/*
- * DOPPELGANGER SPECIAL PATTERN (LEGACY FUNCTION)
- * Showcases the front/back alternation effect.
- * Shows front view, then back view, creating a "flip" effect.
- * 
- * Pattern: All Front → All Back → Individual Front → Individual Back
- * NOTE: Uses 0-indexed arrays. See doppelgangerPatternCommands[] for declarative version
- * using 1-indexed bitmasks and more complex sequencing
- */
-void createDoppelgangerPattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(200);
-  
-  // Show all front (Parts 0 & 1)
-  int frontParts[] = {0, 1};
-  startAnimationOnParts(frontParts, 2, PULSE, duration / 2);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Show all back (Parts 2 & 3) - the doppelganger view
-  int backParts[] = {2, 3};
-  startAnimationOnParts(backParts, 2, PULSE, duration / 2);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual front A (Part 0)
-  startAnimation(0, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual back A (Part 2) - doppelganger of Part 0
-  startAnimation(2, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual front B (Part 1)
-  startAnimation(1, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual back B (Part 3) - doppelganger of Part 1
-  startAnimation(3, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
