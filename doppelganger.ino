@@ -63,11 +63,15 @@ Adafruit_NeoPixel strip4(NUM_LEDS, PIN4, NEO_GRBW + NEO_KHZ800);
 
 // Animation types define different lighting behaviors
 enum AnimationType {
-  OFF,        // Immediate off
-  FADE_IN,    // 0 → full brightness over duration
-  FADE_OUT,   // full brightness → 0 over duration  
-  PULSE,      // fade in then fade out (complete cycle)
-  BREATHE     // slow inhale (70%), quick exhale (30%)
+  OFF,                // Immediate off
+  FADE_IN,           // 0 → full brightness over duration
+  FADE_OUT,          // full brightness → 0 over duration  
+  PULSE,             // fade in then fade out (complete cycle)
+  BREATHE,           // slow inhale (70%), quick exhale (30%)
+  WIPE_IN_FROM_TOP,  // wipe in from top to bottom
+  WIPE_IN_FROM_BOTTOM,   // wipe in from bottom to top
+  WIPE_OUT_FROM_TOP,     // wipe out from top to bottom
+  WIPE_OUT_FROM_BOTTOM   // wipe out from bottom to top
 };
 
 // Animation state tracks the progress of each part's current animation
@@ -577,6 +581,41 @@ const Composition debugComposition = {
   0
 };
 
+// Wipe test composition - demonstrates all wipe animation variants
+const Command wipeTestCommands[] = {
+  // WIPE_IN_FROM_TOP on front parts
+  {ANIMATE, PART_1_MASK, WIPE_IN_FROM_TOP, 1000},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, WIPE_IN_FROM_TOP, 1000},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  
+  // WIPE_OUT_FROM_BOTTOM on front parts
+  {ANIMATE, FRONT_MASK, WIPE_OUT_FROM_BOTTOM, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  
+  // WIPE_IN_FROM_BOTTOM on back parts
+  {ANIMATE, PART_3_MASK, WIPE_IN_FROM_BOTTOM, 1000},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_4_MASK, WIPE_IN_FROM_BOTTOM, 1000},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  
+  // WIPE_OUT_FROM_TOP on back parts
+  {ANIMATE, BACK_MASK, WIPE_OUT_FROM_TOP, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000}
+};
+
+const Composition wipeTestComposition = {
+  "Wipe Test - All Variants",
+  wipeTestCommands,
+  sizeof(wipeTestCommands)/sizeof(Command),
+  false,
+  0
+};
+
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
 /*
@@ -639,19 +678,30 @@ void updatePartAnimation(int partIndex) {
   if (elapsed >= part->animation.duration) {
     part->animation.isActive = false;
     
-    // Ensure final state is correct
-    if (part->animation.type == FADE_OUT || part->animation.type == OFF) {
-      part->currentBrightness = 0;
-    } else if (part->animation.type == FADE_IN) {
-      part->currentBrightness = 255;
-    } else {
-      // For PULSE and BREATHE, end at 0
-      part->currentBrightness = 0;
-    }
-    
-    // Explicitly set all LEDs in this part to the final brightness
-    for (int i = part->startLED; i <= part->endLED; i++) {
-      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, part->currentBrightness));
+    // Ensure final state is correct based on animation type
+    switch (part->animation.type) {
+      case FADE_OUT:
+      case OFF:
+      case PULSE:
+      case BREATHE:
+      case WIPE_OUT_FROM_TOP:
+      case WIPE_OUT_FROM_BOTTOM:
+        part->currentBrightness = 0;
+        // Set all LEDs to off
+        for (int i = part->startLED; i <= part->endLED; i++) {
+          part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
+        }
+        break;
+        
+      case FADE_IN:
+      case WIPE_IN_FROM_TOP:
+      case WIPE_IN_FROM_BOTTOM:
+        part->currentBrightness = 255;
+        // Set all LEDs to full brightness
+        for (int i = part->startLED; i <= part->endLED; i++) {
+          part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 255));
+        }
+        break;
     }
     return;
   }
@@ -698,6 +748,14 @@ void updatePartAnimation(int partIndex) {
       }
       break;
       
+    case WIPE_IN_FROM_TOP:
+    case WIPE_IN_FROM_BOTTOM:
+    case WIPE_OUT_FROM_TOP:
+    case WIPE_OUT_FROM_BOTTOM:
+      // Wipe animations are handled LED by LED, brightness set to full
+      brightness = 255;
+      break;
+      
     case OFF:
       brightness = 0;
       break;
@@ -705,10 +763,83 @@ void updatePartAnimation(int partIndex) {
   
   part->currentBrightness = brightness;
   
-  // Update all LEDs in this part to the calculated brightness
-  // Using white channel (4th parameter) for GRBW strips
-  for (int i = part->startLED; i <= part->endLED; i++) {
-    part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, brightness));
+  // Handle wipe animations LED by LED, others apply to all LEDs
+  if (part->animation.type == WIPE_IN_FROM_TOP || 
+      part->animation.type == WIPE_IN_FROM_BOTTOM ||
+      part->animation.type == WIPE_OUT_FROM_TOP || 
+      part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+    
+    int totalLEDs = part->endLED - part->startLED + 1;
+    int activeLEDs = (int)(totalLEDs * progress);
+    
+    // Clear all LEDs first
+    for (int i = part->startLED; i <= part->endLED; i++) {
+      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
+    }
+    
+    // Light LEDs based on wipe direction and type
+    for (int i = 0; i < activeLEDs; i++) {
+      int ledIndex;
+      uint8_t ledBrightness = 0;
+      
+      switch (part->animation.type) {
+        case WIPE_IN_FROM_TOP:
+          ledIndex = part->startLED + i;
+          ledBrightness = 255;
+          break;
+          
+        case WIPE_IN_FROM_BOTTOM:
+          ledIndex = part->endLED - i;
+          ledBrightness = 255;
+          break;
+          
+        case WIPE_OUT_FROM_TOP:
+          ledIndex = part->startLED + i;
+          ledBrightness = 0;
+          break;
+          
+        case WIPE_OUT_FROM_BOTTOM:
+          ledIndex = part->endLED - i;
+          ledBrightness = 0;
+          break;
+          
+        default:
+          continue;
+      }
+      
+      if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
+        part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
+      }
+    }
+    
+    // For wipe out, we need to start with all LEDs on and turn them off
+    if (part->animation.type == WIPE_OUT_FROM_TOP || part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+      // First set all LEDs to full brightness
+      for (int i = part->startLED; i <= part->endLED; i++) {
+        part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 255));
+      }
+      // Then turn off the wiped LEDs
+      for (int i = 0; i < activeLEDs; i++) {
+        int ledIndex;
+        
+        if (part->animation.type == WIPE_OUT_FROM_TOP) {
+          ledIndex = part->startLED + i;
+        } else {  // WIPE_OUT_FROM_BOTTOM
+          ledIndex = part->endLED - i;
+        }
+        
+        if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
+          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 0));
+        }
+      }
+    }
+    
+  } else {
+    // Standard animations: apply brightness to all LEDs in the part
+    // Using white channel (4th parameter) for GRBW strips
+    for (int i = part->startLED; i <= part->endLED; i++) {
+      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, brightness));
+    }
   }
 }
 
@@ -812,8 +943,11 @@ void loop()
   // Debug pattern - flash first and last LEDs to identify part boundaries
   executeComposition(debugComposition);
   
+  // Test the new wipe animations
+  executeComposition(wipeTestComposition);
+  
   // Main composition
-  executeComposition(friendCompositionSaman);
+  // executeComposition(friendCompositionSaman);
   
   // Debug pattern - flash first and last LEDs after composition
   executeComposition(debugComposition);
