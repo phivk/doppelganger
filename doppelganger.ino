@@ -99,62 +99,64 @@ LEDPart parts[] = {
 
 #define NUM_PARTS 4
 
-// === DYNAMIC TEMPO SYSTEM ===
-struct TempoState {
-  float currentSpeed;        // Current speed multiplier (1.0 = normal, 0.5 = half speed, 2.0 = double speed)
-  float targetSpeed;         // Target speed we're moving towards
-  uint32_t lastUpdateTime;   // Last time we updated the tempo
-  int phase;                 // 0 = accelerating, 1 = decelerating
-  uint32_t cycleStartTime;   // When the current cycle started
-  uint16_t cycleDuration;    // How long each complete cycle should take
+// === COMPOSITION TEMPO SYSTEM ===
+// New system: Fixed durations with tempo-modified animation intensity
+struct CompositionTempo {
+  uint32_t totalDuration;     // Exact composition duration in ms
+  const float* speedCurve;    // Array of speed multipliers for intensity
+  uint16_t curvePoints;       // Number of points in curve
+  uint32_t startTime;         // When composition started
+  bool isActive;              // Whether tempo is currently active
 };
 
-TempoState tempo = {0.3, 0.3, 0, 0, 0, 20000}; // Start slow (0.3x speed), 20 second cycles
+// Default tempo curve: slow start, peak at 70%, quick return (like original)
+const float defaultTempoCurve[] = {0.3, 0.5, 0.8, 1.2, 1.8, 2.5, 3.0, 2.8, 2.2, 1.5, 0.8, 0.3};
+#define DEFAULT_CURVE_POINTS (sizeof(defaultTempoCurve)/sizeof(float))
 
-// Calculate current tempo based on acceleration curve
-void updateTempo() {
-  uint32_t currentTime = millis();
-  uint32_t elapsed = currentTime - tempo.cycleStartTime;
-  
-  // If we've completed a cycle, start a new one
-  if (elapsed >= tempo.cycleDuration) {
-    tempo.cycleStartTime = currentTime;
-    elapsed = 0;
-  }
-  
-  // Calculate progress through the cycle (0.0 to 1.0)
-  float cycleProgress = (float)elapsed / (float)tempo.cycleDuration;
-  
-  // Define the speed curve: slow start, accelerate to peak at 70%, then quick return
-  float targetSpeed;
-  if (cycleProgress <= 0.7) {
-    // Acceleration phase: 70% of cycle time
-    // Use exponential curve for smooth acceleration
-    float accelerationProgress = cycleProgress / 0.7;
-    targetSpeed = 0.3 + (3.0 - 0.3) * (accelerationProgress * accelerationProgress);
-  } else {
-    // Deceleration phase: 30% of cycle time (quick but smooth return)
-    float decelerationProgress = (cycleProgress - 0.7) / 0.3;
-    // Use inverse exponential for quick but smooth deceleration
-    targetSpeed = 3.0 - (3.0 - 0.3) * (decelerationProgress * decelerationProgress);
-  }
-  
-  // Smooth the speed changes to avoid jarring transitions
-  float speedDiff = targetSpeed - tempo.currentSpeed;
-  tempo.currentSpeed += speedDiff * 0.1; // Smooth interpolation
-  
-  tempo.lastUpdateTime = currentTime;
+// Global composition tempo state
+CompositionTempo compositionTempo = {0, nullptr, 0, 0, false};
+
+// Start a composition with tempo control
+void startCompositionTempo(uint32_t duration, const float* curve, uint16_t points) {
+  compositionTempo.totalDuration = duration;
+  compositionTempo.speedCurve = curve ? curve : defaultTempoCurve;
+  compositionTempo.curvePoints = curve ? points : DEFAULT_CURVE_POINTS;
+  compositionTempo.startTime = millis();
+  compositionTempo.isActive = true;
 }
 
-// Get current animation duration based on tempo
-uint16_t getAnimationDuration(uint16_t baseDuration) {
-  updateTempo();
-  return (uint16_t)(baseDuration / tempo.currentSpeed);
+// Stop composition tempo
+void stopCompositionTempo() {
+  compositionTempo.isActive = false;
 }
 
-// Get current delay duration based on tempo
-uint16_t getDelayDuration(uint16_t baseDelay) {
-  return (uint16_t)(baseDelay / tempo.currentSpeed);
+// Get current tempo multiplier for animation intensity
+float getCurrentTempoMultiplier() {
+  if (!compositionTempo.isActive) return 1.0;
+  
+  uint32_t elapsed = millis() - compositionTempo.startTime;
+  if (elapsed >= compositionTempo.totalDuration) {
+    // Composition finished, maintain final tempo value
+    return compositionTempo.speedCurve[compositionTempo.curvePoints - 1];
+  }
+  
+  // Calculate progress through composition (0.0 to 1.0)
+  float progress = (float)elapsed / (float)compositionTempo.totalDuration;
+  
+  // Interpolate from speed curve
+  float curvePosition = progress * (compositionTempo.curvePoints - 1);
+  uint16_t curveIndex = (uint16_t)curvePosition;
+  float fraction = curvePosition - curveIndex;
+  
+  // Handle edge case
+  if (curveIndex >= compositionTempo.curvePoints - 1) {
+    return compositionTempo.speedCurve[compositionTempo.curvePoints - 1];
+  }
+  
+  // Linear interpolation between curve points
+  float value1 = compositionTempo.speedCurve[curveIndex];
+  float value2 = compositionTempo.speedCurve[curveIndex + 1];
+  return value1 + (value2 - value1) * fraction;
 }
 
 // === DECLARATIVE COMPOSITION SYSTEM ===
@@ -182,12 +184,15 @@ struct Animation {
   bool looping;
 };
 
-// Composition definition - a sequence of animations
+// Composition definition - a sequence of animations with tempo control
 struct Composition {
   const char* name;
   const Animation* animations;
   uint8_t animationCount;
   bool looping;
+  uint32_t totalDuration;          // Total composition duration in ms (0 = no tempo control)
+  const float* tempoCurve;         // Optional tempo curve (nullptr = no tempo)
+  uint16_t tempoCurvePoints;       // Number of points in tempo curve
 };
 
 // Part bitmask definitions (1-indexed)
@@ -258,11 +263,13 @@ void executeCommand(const Command& cmd) {
         // Skip invalid commands - could add error handling here
         return;
       }
-      animatePartsFromMask(cmd.partMask, cmd.type, getAnimationDuration(cmd.duration));
+      // Use fixed duration - tempo affects intensity, not timing
+      animatePartsFromMask(cmd.partMask, cmd.type, cmd.duration);
       break;
       
     case WAIT:
-      delay(getDelayDuration(cmd.duration));
+      // Use fixed delay - no tempo adjustment to timing
+      delay(cmd.duration);
       break;
       
     case WAIT_COMPLETE:
@@ -297,12 +304,20 @@ void executeAnimation(const Animation& anim) {
  * Execute a complete composition (sequence of animations)
  */
 void executeComposition(const Composition& comp) {
+  // Start composition tempo if specified
+  if (comp.totalDuration > 0) {
+    startCompositionTempo(comp.totalDuration, comp.tempoCurve, comp.tempoCurvePoints);
+  }
+  
   do {
     for (int i = 0; i < comp.animationCount; i++) {
       executeAnimation(comp.animations[i]);
-      delay(getDelayDuration(300));  // Tempo-adjusted pause between animations
+      delay(300);  // Fixed pause between animations
     }
   } while (comp.looping);
+  
+  // Stop composition tempo
+  stopCompositionTempo();
 }
 
 // === ANIMATION DEFINITIONS ===
@@ -422,7 +437,10 @@ const Composition demoComposition = {
   "Demo - All Animations",
   animations,
   NUM_ANIMATIONS,
-  true  // Loop indefinitely
+  true,  // Loop indefinitely
+  0,     // No tempo control (0 duration)
+  nullptr, // No tempo curve
+  0      // No tempo curve points
 };
 
 // Friend composition - minimalist, intimate, acoustic (2:11 duration)
@@ -487,12 +505,19 @@ const Animation friendAnimationSaman = {
   false  // Play once, don't loop
 };
 
-// Friend composition - single animation that captures intimate, acoustic feeling
+// Gentle tempo curve for intimate, acoustic feeling - subtle variations
+const float friendTempoCurve[] = {0.4, 0.6, 0.9, 1.2, 1.5, 1.8, 1.6, 1.2, 0.8, 0.5, 0.4};
+#define FRIEND_CURVE_POINTS (sizeof(friendTempoCurve)/sizeof(float))
+
+// Friend composition - single animation that captures intimate, acoustic feeling  
 const Composition friendCompositionSaman = {
   "Friend - Saman",
   &friendAnimationSaman,
   1,
-  false  // Play once, total duration ~2:11
+  false,        // Play once
+  131000,       // Precise duration: 2:11 = 131 seconds
+  friendTempoCurve,
+  FRIEND_CURVE_POINTS
 };
 
 // Barry White composition - romantic, fragile, and tender (4:51 duration)
@@ -572,12 +597,19 @@ const Animation barryWhiteAnimation = {
   false  // Play once, don't loop
 };
 
+// Romantic tempo curve with emotional peaks and vulnerable valleys
+const float barryWhiteTempoCurve[] = {0.3, 0.5, 0.8, 1.1, 1.6, 2.2, 2.5, 2.8, 2.4, 1.8, 1.3, 0.9, 0.6, 0.4, 0.3};
+#define BARRY_WHITE_CURVE_POINTS (sizeof(barryWhiteTempoCurve)/sizeof(float))
+
 // Barry White composition - romantic and fragile
 const Composition barryWhiteComposition = {
   "Barry White - Just the Way You Are",
   &barryWhiteAnimation,
   1,
-  false  // Play once, total duration ~4:51
+  false,        // Play once
+  291000,       // Precise duration: 4:51 = 291 seconds  
+  barryWhiteTempoCurve,
+  BARRY_WHITE_CURVE_POINTS
 };
 
 // Distinctive flash patterns for testing - HARSH AND FAST ALL PARTS SIMULTANEOUSLY
@@ -740,26 +772,42 @@ void updatePartAnimation(int partIndex) {
   
   // Calculate progress (0.0 to 1.0)
   float progress = (float)elapsed / (float)part->animation.duration;
+  
+  // Get current tempo multiplier for intensity modification
+  float tempoMultiplier = getCurrentTempoMultiplier();
+  
   uint8_t brightness = 0;
   
   // Calculate brightness based on animation type and progress
+  // Tempo affects the curve steepness: higher tempo = sharper transitions
   switch (part->animation.type) {
     case FADE_IN:
-      brightness = (uint8_t)(255 * progress);
+      // Apply tempo curve: slower tempo = gentler curve, faster tempo = sharper curve
+      {
+        float tempoCurve = pow(progress, 2.0 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
+      }
       break;
       
     case FADE_OUT:
-      brightness = (uint8_t)(255 * (1.0 - progress));
-      // Ensure we reach true zero at the end
-      if (progress >= 0.98) brightness = 0;
+      // Apply tempo curve: slower tempo = gentler curve, faster tempo = sharper curve
+      {
+        float tempoCurve = pow(1.0 - progress, 2.0 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
+        // Ensure we reach true zero at the end
+        if (progress >= 0.98) brightness = 0;
+      }
       break;
       
     case PULSE:
       // Pulse: fade in for first half, fade out for second half
+      // Tempo affects the sharpness of the pulse peak
       if (progress <= 0.5) {
-        brightness = (uint8_t)(255 * (progress * 2));
+        float tempoCurve = pow(progress * 2, 2.0 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
       } else {
-        brightness = (uint8_t)(255 * (2 - progress * 2));
+        float tempoCurve = pow(2 - progress * 2, 2.0 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
         // Ensure we reach true zero at the end
         if (progress >= 0.98) brightness = 0;
       }
@@ -767,14 +815,17 @@ void updatePartAnimation(int partIndex) {
       
     case BREATHE:
       // Breathe: slow inhale (70% of time), quick exhale (30% of time)
-      // This mimics natural breathing rhythm
+      // Tempo affects the intensity of breathing (sharper vs gentler)
       if (progress <= 0.7) {
-        // Inhale phase - slow and steady
-        brightness = (uint8_t)(255 * (progress / 0.7));
+        // Inhale phase - tempo affects curve steepness
+        float inhaleProgress = progress / 0.7;
+        float tempoCurve = pow(inhaleProgress, 1.5 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
       } else {
-        // Exhale phase - quick release
+        // Exhale phase - quick release, tempo affects sharpness
         float exhaleProgress = (progress - 0.7) / 0.3;
-        brightness = (uint8_t)(255 * (1.0 - exhaleProgress));
+        float tempoCurve = pow(1.0 - exhaleProgress, 1.0 / tempoMultiplier);
+        brightness = (uint8_t)(255 * tempoCurve);
         // Ensure we reach true zero at the end
         if (progress >= 0.98) brightness = 0;
       }
@@ -879,5 +930,5 @@ void loop()
   executeAnimation(endFlashAnimation);
   
   // Longer pause between repetitions
-  delay(getDelayDuration(8000));
+  delay(8000);
 }

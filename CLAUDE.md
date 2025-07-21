@@ -89,6 +89,10 @@ All high-level patterns are designed to respect the front/back constraint. When 
 2. Never activate front and back parts simultaneously
 3. Use `clearAllParts()` between conflicting transitions
 
+## Development Memories
+
+- I'll compile by myself
+
 ## File Structure
 ```
 doppelganger/
