@@ -99,64 +99,29 @@ LEDPart parts[] = {
 
 #define NUM_PARTS 4
 
-// === COMPOSITION TEMPO SYSTEM ===
-// New system: Fixed durations with tempo-modified animation intensity
-struct CompositionTempo {
-  uint32_t totalDuration;     // Exact composition duration in ms
-  const float* speedCurve;    // Array of speed multipliers for intensity
-  uint16_t curvePoints;       // Number of points in curve
-  uint32_t startTime;         // When composition started
-  bool isActive;              // Whether tempo is currently active
-};
+// === PRECISE DURATION SYSTEM ===
+// Simple system for exact compositional timing control
 
-// Default tempo curve: slow start, peak at 70%, quick return (like original)
-const float defaultTempoCurve[] = {0.3, 0.5, 0.8, 1.2, 1.8, 2.5, 3.0, 2.8, 2.2, 1.5, 0.8, 0.3};
-#define DEFAULT_CURVE_POINTS (sizeof(defaultTempoCurve)/sizeof(float))
+// Global composition timing tracking (optional)
+uint32_t compositionStartTime = 0;
+uint32_t compositionTotalDuration = 0;
 
-// Global composition tempo state
-CompositionTempo compositionTempo = {0, nullptr, 0, 0, false};
-
-// Start a composition with tempo control
-void startCompositionTempo(uint32_t duration, const float* curve, uint16_t points) {
-  compositionTempo.totalDuration = duration;
-  compositionTempo.speedCurve = curve ? curve : defaultTempoCurve;
-  compositionTempo.curvePoints = curve ? points : DEFAULT_CURVE_POINTS;
-  compositionTempo.startTime = millis();
-  compositionTempo.isActive = true;
+// Start composition timing tracking
+void startCompositionTiming(uint32_t totalDuration) {
+  compositionStartTime = millis();
+  compositionTotalDuration = totalDuration;
 }
 
-// Stop composition tempo
-void stopCompositionTempo() {
-  compositionTempo.isActive = false;
+// Get elapsed time in current composition (for debugging/monitoring)
+uint32_t getCompositionElapsed() {
+  if (compositionStartTime == 0) return 0;
+  return millis() - compositionStartTime;
 }
 
-// Get current tempo multiplier for animation intensity
-float getCurrentTempoMultiplier() {
-  if (!compositionTempo.isActive) return 1.0;
-  
-  uint32_t elapsed = millis() - compositionTempo.startTime;
-  if (elapsed >= compositionTempo.totalDuration) {
-    // Composition finished, maintain final tempo value
-    return compositionTempo.speedCurve[compositionTempo.curvePoints - 1];
-  }
-  
-  // Calculate progress through composition (0.0 to 1.0)
-  float progress = (float)elapsed / (float)compositionTempo.totalDuration;
-  
-  // Interpolate from speed curve
-  float curvePosition = progress * (compositionTempo.curvePoints - 1);
-  uint16_t curveIndex = (uint16_t)curvePosition;
-  float fraction = curvePosition - curveIndex;
-  
-  // Handle edge case
-  if (curveIndex >= compositionTempo.curvePoints - 1) {
-    return compositionTempo.speedCurve[compositionTempo.curvePoints - 1];
-  }
-  
-  // Linear interpolation between curve points
-  float value1 = compositionTempo.speedCurve[curveIndex];
-  float value2 = compositionTempo.speedCurve[curveIndex + 1];
-  return value1 + (value2 - value1) * fraction;
+// Check if composition should be complete (for validation)
+bool isCompositionTimeComplete() {
+  if (compositionStartTime == 0 || compositionTotalDuration == 0) return false;
+  return getCompositionElapsed() >= compositionTotalDuration;
 }
 
 // === DECLARATIVE COMPOSITION SYSTEM ===
@@ -184,15 +149,13 @@ struct Animation {
   bool looping;
 };
 
-// Composition definition - a sequence of animations with tempo control
+// Composition definition - a sequence of animations with precise duration control
 struct Composition {
   const char* name;
   const Animation* animations;
   uint8_t animationCount;
   bool looping;
-  uint32_t totalDuration;          // Total composition duration in ms (0 = no tempo control)
-  const float* tempoCurve;         // Optional tempo curve (nullptr = no tempo)
-  uint16_t tempoCurvePoints;       // Number of points in tempo curve
+  uint32_t totalDuration;          // Total composition duration in ms (0 = no duration control)
 };
 
 // Part bitmask definitions (1-indexed)
@@ -304,9 +267,9 @@ void executeAnimation(const Animation& anim) {
  * Execute a complete composition (sequence of animations)
  */
 void executeComposition(const Composition& comp) {
-  // Start composition tempo if specified
+  // Start composition timing if specified
   if (comp.totalDuration > 0) {
-    startCompositionTempo(comp.totalDuration, comp.tempoCurve, comp.tempoCurvePoints);
+    startCompositionTiming(comp.totalDuration);
   }
   
   do {
@@ -315,9 +278,6 @@ void executeComposition(const Composition& comp) {
       delay(300);  // Fixed pause between animations
     }
   } while (comp.looping);
-  
-  // Stop composition tempo
-  stopCompositionTempo();
 }
 
 // === ANIMATION DEFINITIONS ===
@@ -438,9 +398,7 @@ const Composition demoComposition = {
   animations,
   NUM_ANIMATIONS,
   true,  // Loop indefinitely
-  0,     // No tempo control (0 duration)
-  nullptr, // No tempo curve
-  0      // No tempo curve points
+  0      // No duration control (0 = run indefinitely)
 };
 
 // Friend composition - minimalist, intimate, acoustic (2:11 duration)
@@ -505,19 +463,13 @@ const Animation friendAnimationSaman = {
   false  // Play once, don't loop
 };
 
-// Gentle tempo curve for intimate, acoustic feeling - subtle variations
-const float friendTempoCurve[] = {0.4, 0.6, 0.9, 1.2, 1.5, 1.8, 1.6, 1.2, 0.8, 0.5, 0.4};
-#define FRIEND_CURVE_POINTS (sizeof(friendTempoCurve)/sizeof(float))
-
 // Friend composition - single animation that captures intimate, acoustic feeling  
 const Composition friendCompositionSaman = {
   "Friend - Saman",
   &friendAnimationSaman,
   1,
   false,        // Play once
-  131000,       // Precise duration: 2:11 = 131 seconds
-  friendTempoCurve,
-  FRIEND_CURVE_POINTS
+  131000        // Precise duration: 2:11 = 131 seconds
 };
 
 // Barry White composition - romantic, fragile, and tender (4:51 duration)
@@ -597,19 +549,13 @@ const Animation barryWhiteAnimation = {
   false  // Play once, don't loop
 };
 
-// Romantic tempo curve with emotional peaks and vulnerable valleys
-const float barryWhiteTempoCurve[] = {0.3, 0.5, 0.8, 1.1, 1.6, 2.2, 2.5, 2.8, 2.4, 1.8, 1.3, 0.9, 0.6, 0.4, 0.3};
-#define BARRY_WHITE_CURVE_POINTS (sizeof(barryWhiteTempoCurve)/sizeof(float))
-
 // Barry White composition - romantic and fragile
 const Composition barryWhiteComposition = {
   "Barry White - Just the Way You Are",
   &barryWhiteAnimation,
   1,
   false,        // Play once
-  291000,       // Precise duration: 4:51 = 291 seconds  
-  barryWhiteTempoCurve,
-  BARRY_WHITE_CURVE_POINTS
+  291000        // Precise duration: 4:51 = 291 seconds
 };
 
 // Distinctive flash patterns for testing - HARSH AND FAST ALL PARTS SIMULTANEOUSLY
@@ -772,42 +718,26 @@ void updatePartAnimation(int partIndex) {
   
   // Calculate progress (0.0 to 1.0)
   float progress = (float)elapsed / (float)part->animation.duration;
-  
-  // Get current tempo multiplier for intensity modification
-  float tempoMultiplier = getCurrentTempoMultiplier();
-  
   uint8_t brightness = 0;
   
   // Calculate brightness based on animation type and progress
-  // Tempo affects the curve steepness: higher tempo = sharper transitions
   switch (part->animation.type) {
     case FADE_IN:
-      // Apply tempo curve: slower tempo = gentler curve, faster tempo = sharper curve
-      {
-        float tempoCurve = pow(progress, 2.0 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
-      }
+      brightness = (uint8_t)(255 * progress);
       break;
       
     case FADE_OUT:
-      // Apply tempo curve: slower tempo = gentler curve, faster tempo = sharper curve
-      {
-        float tempoCurve = pow(1.0 - progress, 2.0 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
-        // Ensure we reach true zero at the end
-        if (progress >= 0.98) brightness = 0;
-      }
+      brightness = (uint8_t)(255 * (1.0 - progress));
+      // Ensure we reach true zero at the end
+      if (progress >= 0.98) brightness = 0;
       break;
       
     case PULSE:
       // Pulse: fade in for first half, fade out for second half
-      // Tempo affects the sharpness of the pulse peak
       if (progress <= 0.5) {
-        float tempoCurve = pow(progress * 2, 2.0 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
+        brightness = (uint8_t)(255 * (progress * 2));
       } else {
-        float tempoCurve = pow(2 - progress * 2, 2.0 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
+        brightness = (uint8_t)(255 * (2 - progress * 2));
         // Ensure we reach true zero at the end
         if (progress >= 0.98) brightness = 0;
       }
@@ -815,17 +745,14 @@ void updatePartAnimation(int partIndex) {
       
     case BREATHE:
       // Breathe: slow inhale (70% of time), quick exhale (30% of time)
-      // Tempo affects the intensity of breathing (sharper vs gentler)
+      // This mimics natural breathing rhythm
       if (progress <= 0.7) {
-        // Inhale phase - tempo affects curve steepness
-        float inhaleProgress = progress / 0.7;
-        float tempoCurve = pow(inhaleProgress, 1.5 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
+        // Inhale phase - slow and steady
+        brightness = (uint8_t)(255 * (progress / 0.7));
       } else {
-        // Exhale phase - quick release, tempo affects sharpness
+        // Exhale phase - quick release
         float exhaleProgress = (progress - 0.7) / 0.3;
-        float tempoCurve = pow(1.0 - exhaleProgress, 1.0 / tempoMultiplier);
-        brightness = (uint8_t)(255 * tempoCurve);
+        brightness = (uint8_t)(255 * (1.0 - exhaleProgress));
         // Ensure we reach true zero at the end
         if (progress >= 0.98) brightness = 0;
       }
@@ -915,11 +842,7 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // TEST: Execute Barry White composition with distinctive flash patterns
-  // "Just the Way You Are" - romantic, fragile, and tender
-  // Duration: 4 minutes 51 seconds
   // Features start/end flash patterns for clear testing boundaries
-  
   // Start flash pattern - Front/Back alternating flashes
   executeAnimation(startFlashAnimation);
   
