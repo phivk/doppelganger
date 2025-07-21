@@ -15,10 +15,10 @@
  * 
  * PART LAYOUT (1-INDEXED):
  * The system uses 4 logical parts arranged in a frame:
- * - Part 1: Strip1, LEDs 40-59 (Front A-Side) - Bitmask: 0b0001
- * - Part 2: Strip2, LEDs 40-59 (Front B-Side) - Bitmask: 0b0010
- * - Part 3: Strip3, LEDs 40-59 (Back A-Side)  - Bitmask: 0b0100
- * - Part 4: Strip4, LEDs 40-59 (Back B-Side)  - Bitmask: 0b1000
+ * - Part 1: Strip1, LEDs 36-59 (Front A-Side) - Bitmask: 0b0001
+ * - Part 2: Strip2, LEDs 36-59 (Front B-Side) - Bitmask: 0b0010
+ * - Part 3: Strip3, LEDs 36-59 (Back A-Side)  - Bitmask: 0b0100
+ * - Part 4: Strip4, LEDs 36-59 (Back B-Side)  - Bitmask: 0b1000
  * 
  * Physical Layout:
  *   Front: [Part 1] [Part 2]
@@ -91,10 +91,10 @@ struct LEDPart {
 // NOTE: Array is 0-indexed for internal use, but bitmasks are 1-indexed
 // Part 1 (bitmask 0b0001) maps to parts[0], Part 2 (0b0010) to parts[1], etc.
 LEDPart parts[] = {
-  {&strip1, 40, 59, 0, {OFF, 0, 0, false}},   // parts[0] = Part 1: Strip1 LEDs 40-59
-  {&strip2, 40, 59, 0, {OFF, 0, 0, false}},   // parts[1] = Part 2: Strip2 LEDs 40-59
-  {&strip3, 40, 59, 0, {OFF, 0, 0, false}},   // parts[2] = Part 3: Strip3 LEDs 40-59
-  {&strip4, 40, 59, 0, {OFF, 0, 0, false}}    // parts[3] = Part 4: Strip4 LEDs 40-59
+  {&strip1, 36, 59, 0, {OFF, 0, 0, false}},   // parts[0] = Part 1: Strip1 LEDs 36-59
+  {&strip2, 36, 59, 0, {OFF, 0, 0, false}},   // parts[1] = Part 2: Strip2 LEDs 36-59
+  {&strip3, 36, 59, 0, {OFF, 0, 0, false}},   // parts[2] = Part 3: Strip3 LEDs 36-59
+  {&strip4, 36, 59, 0, {OFF, 0, 0, false}}    // parts[3] = Part 4: Strip4 LEDs 36-59
 };
 
 #define NUM_PARTS 4
