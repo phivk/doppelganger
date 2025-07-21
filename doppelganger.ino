@@ -142,19 +142,11 @@ struct Command {
   uint16_t duration;
 };
 
-// Animation definition
-struct Animation {
+// Composition definition - a sequence of commands with precise duration control
+struct Composition {
   const char* name;
   const Command* commands;
   uint8_t commandCount;
-  bool looping;
-};
-
-// Composition definition - a sequence of animations with precise duration control
-struct Composition {
-  const char* name;
-  const Animation* animations;
-  uint8_t animationCount;
   bool looping;
   uint32_t totalDuration;          // Total composition duration in ms (0 = no duration control)
 };
@@ -182,7 +174,6 @@ void debugFlashFirstLastLEDs(uint8_t brightness);
 // === DECLARATIVE ANIMATION FUNCTIONS ===
 bool isValidPartMask(uint8_t partMask);
 void executeCommand(const Command& cmd);
-void executeAnimation(const Animation& anim);
 void executeComposition(const Composition& comp);
 void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration);
 
@@ -253,26 +244,7 @@ void executeCommand(const Command& cmd) {
 }
 
 /*
- * Execute a single animation
- */
-void executeAnimation(const Animation& anim) {
-  clearAllParts();
-  
-  do {
-    for (int i = 0; i < anim.commandCount; i++) {
-      executeCommand(anim.commands[i]);
-      
-      // Update animations during execution
-      while (isAnyPartActive()) {
-        updateAllAnimations();
-        delay(10);
-      }
-    }
-  } while (anim.looping);
-}
-
-/*
- * Execute a complete composition (sequence of animations)
+ * Execute a complete composition (sequence of commands)
  */
 void executeComposition(const Composition& comp) {
   // Start composition timing if specified
@@ -280,10 +252,17 @@ void executeComposition(const Composition& comp) {
     startCompositionTiming(comp.totalDuration);
   }
   
+  clearAllParts();
+  
   do {
-    for (int i = 0; i < comp.animationCount; i++) {
-      executeAnimation(comp.animations[i]);
-      delay(300);  // Fixed pause between animations
+    for (int i = 0; i < comp.commandCount; i++) {
+      executeCommand(comp.commands[i]);
+      
+      // Update animations during execution
+      while (isAnyPartActive()) {
+        updateAllAnimations();
+        delay(10);
+      }
     }
   } while (comp.looping);
 }
@@ -386,28 +365,46 @@ const Command doppelgangerPatternCommands[] = {
   {WAIT_COMPLETE, 0, OFF, 0}
 };
 
-// Animation definitions
-const Animation animations[] = {
-  {"Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false},
-  {"Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false},
-  {"All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false},
-  {"Breathing Sequence", breathingSequenceCommands, sizeof(breathingSequenceCommands)/sizeof(Command), false},
-  {"Chase Pattern", chasePatternCommands, sizeof(chasePatternCommands)/sizeof(Command), false},
-  {"Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false}
+// Composition definitions
+const Composition waveComposition = {
+  "Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false, 0
 };
 
-#define NUM_ANIMATIONS (sizeof(animations)/sizeof(Animation))
+const Composition oppositePairsComposition = {
+  "Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false, 0
+};
+
+const Composition allTogetherComposition = {
+  "All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false, 0
+};
+
+const Composition breathingSequenceComposition = {
+  "Breathing Sequence", breathingSequenceCommands, sizeof(breathingSequenceCommands)/sizeof(Command), false, 0
+};
+
+const Composition chasePatternComposition = {
+  "Chase Pattern", chasePatternCommands, sizeof(chasePatternCommands)/sizeof(Command), false, 0
+};
+
+const Composition doppelgangerComposition = {
+  "Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false, 0
+};
+
+const Composition* compositions[] = {
+  &waveComposition,
+  &oppositePairsComposition,
+  &allTogetherComposition,
+  &breathingSequenceComposition,
+  &chasePatternComposition,
+  &doppelgangerComposition
+};
+
+#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition*))
 
 // === COMPOSITION DEFINITIONS ===
 
-// Demo composition that cycles through all available animations
-const Composition demoComposition = {
-  "Demo - All Animations",
-  animations,
-  NUM_ANIMATIONS,
-  true,  // Loop indefinitely
-  0      // No duration control (0 = run indefinitely)
-};
+// Demo composition that cycles through individual compositions would need to be restructured
+// For now, we'll use individual compositions directly
 
 // Friend composition - minimalist, intimate, acoustic (2:11 duration)
 // Inspired by Ólafur Arnalds - "Saman"
@@ -464,18 +461,11 @@ const Command friendCommands[] = {
   {WAIT, 0, OFF, 2000}                       // Final silence
 };
 
-const Animation friendAnimationSaman = {
-  "Friend",
-  friendCommands,
-  sizeof(friendCommands)/sizeof(Command),
-  false  // Play once, don't loop
-};
-
-// Friend composition - single animation that captures intimate, acoustic feeling  
+// Friend composition - intimate, acoustic feeling  
 const Composition friendCompositionSaman = {
   "Friend - Saman",
-  &friendAnimationSaman,
-  1,
+  friendCommands,
+  sizeof(friendCommands)/sizeof(Command),
   false,        // Play once
   131000        // Precise duration: 2:11 = 131 seconds
 };
@@ -550,18 +540,11 @@ const Command barryWhiteCommands[] = {
   {WAIT, 0, OFF, 3000}                       // Final romantic silence
 };
 
-const Animation barryWhiteAnimation = {
-  "Barry White - Just the Way You Are",
-  barryWhiteCommands,
-  sizeof(barryWhiteCommands)/sizeof(Command),
-  false  // Play once, don't loop
-};
-
 // Barry White composition - romantic and fragile
 const Composition barryWhiteComposition = {
   "Barry White - Just the Way You Are",
-  &barryWhiteAnimation,
-  1,
+  barryWhiteCommands,
+  sizeof(barryWhiteCommands)/sizeof(Command),
   false,        // Play once
   291000        // Precise duration: 4:51 = 291 seconds
 };
@@ -586,11 +569,12 @@ const Command debugCommands[] = {
   {WAIT, 0, OFF, 500}                       // Longer pause after debug
 };
 
-const Animation debugAnimation = {
+const Composition debugComposition = {
   "Debug - First/Last LEDs",
   debugCommands,
   sizeof(debugCommands)/sizeof(Command),
-  false
+  false,
+  0
 };
 
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
@@ -826,13 +810,13 @@ void setup()
 void loop()
 {
   // Debug pattern - flash first and last LEDs to identify part boundaries
-  executeAnimation(debugAnimation);
+  executeComposition(debugComposition);
   
   // Main composition
   executeComposition(friendCompositionSaman);
   
   // Debug pattern - flash first and last LEDs after composition
-  executeAnimation(debugAnimation);
+  executeComposition(debugComposition);
   
   // Longer pause between repetitions
   delay(8000);
