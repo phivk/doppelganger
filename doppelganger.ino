@@ -130,7 +130,8 @@ bool isCompositionTimeComplete() {
 enum CommandType {
   ANIMATE,      // Start animation on specified parts
   WAIT,         // Wait for specified duration
-  WAIT_COMPLETE // Wait for all active animations to complete
+  WAIT_COMPLETE, // Wait for all active animations to complete
+  DEBUG_FLASH   // Flash first and last LEDs of all parts
 };
 
 // Animation command structure
@@ -176,6 +177,7 @@ void updateAllAnimations();
 void updatePartAnimation(int partIndex);
 void clearAllParts();
 bool isAnyPartActive();
+void debugFlashFirstLastLEDs(uint8_t brightness);
 
 // === DECLARATIVE ANIMATION FUNCTIONS ===
 bool isValidPartMask(uint8_t partMask);
@@ -240,6 +242,12 @@ void executeCommand(const Command& cmd) {
         updateAllAnimations();
         delay(10);
       }
+      break;
+      
+    case DEBUG_FLASH:
+      // Flash first and last LEDs of all parts
+      // Use duration as brightness (0-255)
+      debugFlashFirstLastLEDs((uint8_t)cmd.duration);
       break;
   }
 }
@@ -558,82 +566,30 @@ const Composition barryWhiteComposition = {
   291000        // Precise duration: 4:51 = 291 seconds
 };
 
-// Distinctive flash patterns for testing - HARSH AND FAST ALL PARTS SIMULTANEOUSLY
+// Debug animation - flashes first and last LEDs of each part for identification
 
-const Command startFlashCommands[] = {
-  // Harsh rapid flashes - all parts simultaneously
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on (20ms)
-  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off (20ms)
-  {WAIT, 0, OFF, 100},                       // Brief pause
+const Command debugCommands[] = {
+  // Flash first and last LEDs bright
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 200},                      // Brief pause
   
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
-  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
-  {WAIT, 0, OFF, 100},                       // Brief pause
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility  
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 200},                      // Brief pause
   
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
-  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
-  {WAIT, 0, OFF, 100},                       // Brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
-  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
-  {WAIT, 0, OFF, 100},                       // Brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 20},    // ALL PARTS instant on
-  {WAIT, 0, OFF, 200},                       // Flash duration 200ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 20},   // ALL PARTS instant off
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 1000}                       // Pause before main composition
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 500}                       // Longer pause after debug
 };
 
-const Command endFlashCommands[] = {
-  // End: Even more harsh and rapid
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on (10ms)
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT, 0, OFF, 80},                        // Very brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT, 0, OFF, 80},                        // Very brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT, 0, OFF, 80},                        // Very brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT, 0, OFF, 80},                        // Very brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT, 0, OFF, 80},                        // Very brief pause
-  
-  {ANIMATE, ALL_PARTS_MASK, FADE_IN, 10},    // ALL PARTS super fast on
-  {WAIT, 0, OFF, 100},                       // Very short flash 100ms
-  {ANIMATE, ALL_PARTS_MASK, FADE_OUT, 10},   // ALL PARTS super fast off
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 1000}
-};
-
-const Animation startFlashAnimation = {
-  "Start Flash",
-  startFlashCommands,
-  sizeof(startFlashCommands)/sizeof(Command),
-  false
-};
-
-const Animation endFlashAnimation = {
-  "End Flash",
-  endFlashCommands,
-  sizeof(endFlashCommands)/sizeof(Command),
+const Animation debugAnimation = {
+  "Debug - First/Last LEDs",
+  debugCommands,
+  sizeof(debugCommands)/sizeof(Command),
   false
 };
 
@@ -815,6 +771,33 @@ bool isAnyPartActive() {
   return false;
 }
 
+/*
+ * Debug function: Flash only the first and last LED of each part
+ * Used for testing to identify part boundaries
+ */
+void debugFlashFirstLastLEDs(uint8_t brightness) {
+  for (int i = 0; i < NUM_PARTS; i++) {
+    LEDPart* part = &parts[i];
+    
+    // Light first LED (startLED)
+    part->strip->setPixelColor(part->startLED, part->strip->Color(0, 0, 0, brightness));
+    
+    // Light last LED (endLED) 
+    part->strip->setPixelColor(part->endLED, part->strip->Color(0, 0, 0, brightness));
+    
+    // Turn off all LEDs in between
+    for (int j = part->startLED + 1; j < part->endLED; j++) {
+      part->strip->setPixelColor(j, part->strip->Color(0, 0, 0, 0));
+    }
+  }
+  
+  // Update all strips
+  strip1.show();
+  strip2.show();
+  strip3.show();
+  strip4.show();
+}
+
 // === SETUP ===
 void setup()
 {
@@ -842,15 +825,14 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Features start/end flash patterns for clear testing boundaries
-  // Start flash pattern - Front/Back alternating flashes
-  executeAnimation(startFlashAnimation);
+  // Debug pattern - flash first and last LEDs to identify part boundaries
+  executeAnimation(debugAnimation);
   
   // Main composition
   executeComposition(friendCompositionSaman);
   
-  // End flash pattern - Individual part flashes (1-2-3-4)
-  executeAnimation(endFlashAnimation);
+  // Debug pattern - flash first and last LEDs after composition
+  executeAnimation(debugAnimation);
   
   // Longer pause between repetitions
   delay(8000);
