@@ -591,6 +591,34 @@ const Composition debugComposition = {
   0
 };
 
+// === EASING FUNCTIONS ===
+
+/*
+ * Easing functions provide natural motion curves instead of linear progression
+ * All functions take a progress value from 0.0 to 1.0 and return an eased value
+ */
+
+// Ease in (slow start, accelerating)
+float easeIn(float t) {
+  return t * t * t;  // Cubic ease-in
+}
+
+// Ease out (fast start, decelerating) 
+float easeOut(float t) {
+  float f = t - 1.0;
+  return f * f * f + 1.0;  // Cubic ease-out
+}
+
+// Ease in-out (slow start and end, fast middle)
+float easeInOut(float t) {
+  if (t < 0.5) {
+    return 4.0 * t * t * t;  // First half: ease-in
+  } else {
+    float f = 2.0 * t - 2.0;
+    return 1.0 + f * f * f / 2.0;  // Second half: ease-out
+  }
+}
+
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
 /*
@@ -745,7 +773,11 @@ void updatePartAnimation(int partIndex) {
       part->animation.type == WIPE_OUT_FROM_BOTTOM) {
     
     int totalLEDs = part->endLED - part->startLED + 1;
-    int activeLEDs = (int)(totalLEDs * progress);
+    
+    // Apply symmetrical easing to all wipe animations for consistent, natural movement
+    float easedProgress = easeInOut(progress);  // Symmetrical: slow start, fast middle, slow end
+    
+    int activeLEDs = (int)(totalLEDs * easedProgress);
     
     // Clear all LEDs first
     for (int i = part->startLED; i <= part->endLED; i++) {
