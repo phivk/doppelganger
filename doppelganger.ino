@@ -777,56 +777,60 @@ void updatePartAnimation(int partIndex) {
     // Apply symmetrical easing to all wipe animations for consistent, natural movement
     float easedProgress = easeInOut(progress);  // Symmetrical: slow start, fast middle, slow end
     
-    int activeLEDs = (int)(totalLEDs * easedProgress);
+    // Calculate position with sub-LED precision for smooth fading
+    float exactPosition = totalLEDs * easedProgress;
+    int activeLEDs = (int)exactPosition;
+    float fadeAmount = exactPosition - activeLEDs;  // Fractional part for fade
     
     // Clear all LEDs first
     for (int i = part->startLED; i <= part->endLED; i++) {
       part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
     }
     
-    // Light LEDs based on wipe direction and type
-    for (int i = 0; i < activeLEDs; i++) {
+    // Light LEDs based on wipe direction and type with fading
+    for (int i = 0; i <= activeLEDs && i < totalLEDs; i++) {
       int ledIndex;
       uint8_t ledBrightness = 0;
+      bool isWipeIn = (part->animation.type == WIPE_IN_FROM_TOP || part->animation.type == WIPE_IN_FROM_BOTTOM);
       
+      // Calculate LED index based on direction
       switch (part->animation.type) {
         case WIPE_IN_FROM_TOP:
+        case WIPE_OUT_FROM_TOP:
           ledIndex = part->startLED + i;
-          ledBrightness = 255;
           break;
           
         case WIPE_IN_FROM_BOTTOM:
-          ledIndex = part->endLED - i;
-          ledBrightness = 255;
-          break;
-          
-        case WIPE_OUT_FROM_TOP:
-          ledIndex = part->startLED + i;
-          ledBrightness = 0;
-          break;
-          
         case WIPE_OUT_FROM_BOTTOM:
           ledIndex = part->endLED - i;
-          ledBrightness = 0;
           break;
           
         default:
           continue;
       }
       
-      if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
-        part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
+      // Skip if LED index is out of bounds
+      if (ledIndex < part->startLED || ledIndex > part->endLED) continue;
+      
+      // Calculate brightness with fading
+      if (i < activeLEDs) {
+        // Fully lit LEDs
+        ledBrightness = isWipeIn ? 255 : 0;
+      } else if (i == activeLEDs && fadeAmount > 0) {
+        // Fading LED at the edge
+        if (isWipeIn) {
+          ledBrightness = (uint8_t)(255 * fadeAmount);
+        } else {
+          ledBrightness = (uint8_t)(255 * (1.0 - fadeAmount));
+        }
       }
+      
+      part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
     }
     
-    // For wipe out, we need to start with all LEDs on and turn them off
+    // For wipe out animations, light the remaining unwiped LEDs
     if (part->animation.type == WIPE_OUT_FROM_TOP || part->animation.type == WIPE_OUT_FROM_BOTTOM) {
-      // First set all LEDs to full brightness
-      for (int i = part->startLED; i <= part->endLED; i++) {
-        part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 255));
-      }
-      // Then turn off the wiped LEDs
-      for (int i = 0; i < activeLEDs; i++) {
+      for (int i = activeLEDs + 1; i < totalLEDs; i++) {
         int ledIndex;
         
         if (part->animation.type == WIPE_OUT_FROM_TOP) {
@@ -836,7 +840,7 @@ void updatePartAnimation(int partIndex) {
         }
         
         if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
-          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 0));
+          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 255));
         }
       }
     }
