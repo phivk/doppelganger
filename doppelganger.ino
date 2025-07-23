@@ -45,6 +45,7 @@
  */
 
 #include <Adafruit_NeoPixel.h>
+#include <math.h>
 
 // === HARDWARE CONFIGURATION ===
 #define PIN1 2              // Strip 1 data pin
@@ -110,6 +111,16 @@ LEDPart parts[] = {
 // Button state variables
 int buttonState = 0;
 int lastButtonState = 0;
+bool buttonPressed = false;
+
+// System state variables
+enum SystemState {
+  IDLE,
+  PLAYING_COMPOSITION
+};
+
+SystemState currentState = IDLE;
+uint32_t idleStartTime = 0;
 
 // === PRECISE DURATION SYSTEM ===
 // Simple system for exact compositional timing control
@@ -937,26 +948,69 @@ void debugFlashFirstLastLEDs(uint8_t brightness) {
   strip4.show();
 }
 
+// === IDLE STATE IMPLEMENTATION ===
+
+/*
+ * Create idle state composition with gentle pulsing of outermost LEDs
+ * This uses the first and last LED of each part for a subtle ambient effect
+ */
+void updateIdleState() {
+  if (idleStartTime == 0) {
+    idleStartTime = millis();
+  }
+  
+  uint32_t elapsed = millis() - idleStartTime;
+  float cycleProgress = (elapsed % 3000) / 3000.0f; // 3-second cycle for more dynamic feel
+  
+  // Use sine wave and easing for expressive pulsing
+  float sineValue = sin(cycleProgress * 2 * PI);
+  float easedValue = easeInOut((sineValue + 1.0) / 2.0); // Convert -1..1 to 0..1 and ease
+  uint8_t brightness = (uint8_t)(10 + 180 * easedValue); // Range: 10-190 for much more expressive effect
+  
+  // Clear all LEDs first
+  for (int i = 0; i < NUM_PARTS; i++) {
+    LEDPart* part = &parts[i];
+    for (int j = part->startLED; j <= part->endLED; j++) {
+      part->strip->setPixelColor(j, part->strip->Color(0, 0, 0, 0));
+    }
+  }
+  
+  // Light only the outermost LEDs (first and last of each part)
+  for (int i = 0; i < NUM_PARTS; i++) {
+    LEDPart* part = &parts[i];
+    part->strip->setPixelColor(part->startLED, part->strip->Color(0, 0, 0, brightness));
+    part->strip->setPixelColor(part->endLED, part->strip->Color(0, 0, 0, brightness));
+  }
+  
+  // Update all strips
+  strip1.show();
+  strip2.show();
+  strip3.show();
+  strip4.show();
+}
+
 // === BUTTON CONTROL IMPLEMENTATION ===
 
 /*
  * Handle button input and control LED
- * This function runs independently of the animation system
+ * Detects button presses to trigger composition playback
  */
 void handleButtonControl() {
   buttonState = digitalRead(BUTTON_PIN);
   
-  // Control LED based on button state (pressed = LOW due to INPUT_PULLUP)
-  if (buttonState == LOW) {
-    digitalWrite(CONTROL_LED_PIN, LOW);
+  // Control LED based on system state
+  if (currentState == IDLE) {
+    digitalWrite(CONTROL_LED_PIN, HIGH);  // LED on during idle
   } else {
-    digitalWrite(CONTROL_LED_PIN, HIGH);
+    digitalWrite(CONTROL_LED_PIN, LOW);   // LED off during composition
   }
   
-  // Detect button state changes for debugging or additional functionality
+  // Detect button press (transition from HIGH to LOW)
   if (buttonState != lastButtonState) {
-    // Button state changed - could add additional functionality here
-    // For now, just update the last state for next comparison
+    if (buttonState == LOW && lastButtonState == HIGH) {
+      // Button was just pressed
+      buttonPressed = true;
+    }
     lastButtonState = buttonState;
   }
 }
@@ -995,15 +1049,32 @@ void loop()
   // Handle button control continuously
   handleButtonControl();
   
-  // Debug pattern - flash first and last LEDs to identify part boundaries
-  executeComposition(debugComposition);
-  
-  // Main composition
-  executeComposition(friendCompositionSaman);
-  
-  // Debug pattern - flash first and last LEDs after composition
-  executeComposition(debugComposition);
-  
-  // Longer pause between repetitions
-  delay(8000);
+  switch (currentState) {
+    case IDLE:
+      // Update idle state with gentle pulsing
+      updateIdleState();
+      
+      // Check if button was pressed to start composition
+      if (buttonPressed) {
+        buttonPressed = false; // Clear the flag
+        currentState = PLAYING_COMPOSITION;
+        clearAllParts(); // Clear idle state before starting composition
+        delay(50); // Brief pause for clean transition
+      }
+      
+      // Small delay to prevent overwhelming the processor
+      delay(20);
+      break;
+      
+    case PLAYING_COMPOSITION:
+      // Play the main composition
+      executeComposition(friendCompositionSaman);
+      
+      // After composition completes, return to idle
+      currentState = IDLE;
+      idleStartTime = 0; // Reset idle timing
+      clearAllParts(); // Ensure clean transition to idle
+      delay(100); // Brief pause before starting idle
+      break;
+  }
 }
