@@ -472,26 +472,7 @@ const Composition doppelgangerComposition = {
   "Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false, 0
 };
 
-const Composition* compositions[] = {
-  &waveComposition,
-  &oppositePairsComposition,
-  &allTogetherComposition,
-  &breathingSequenceComposition,
-  &chasePatternComposition,
-  &doppelgangerComposition,
-  &friendCompositionSaman,
-  &mirrorEffectComposition,
-  &heartbeatComposition,
-  &conversationComposition,
-  &echoComposition,
-  &tidalComposition,
-  &contemplationComposition,
-  &recognitionComposition,
-  &farewellComposition,
-  &awakeningComposition
-};
-
-#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition*))
+// compositions array moved after all definitions
 
 // === COMPOSITION DEFINITIONS ===
 
@@ -837,6 +818,28 @@ const Composition farewellComposition = {
 const Composition awakeningComposition = {
   "Awakening", awakeningCommands, sizeof(awakeningCommands)/sizeof(Command), false, 0
 };
+
+// === COMPOSITIONS ARRAY ===
+const Composition* compositions[] = {
+  &waveComposition,
+  &oppositePairsComposition,
+  &allTogetherComposition,
+  &breathingSequenceComposition,
+  &chasePatternComposition,
+  &doppelgangerComposition,
+  &friendCompositionSaman,
+  &mirrorEffectComposition,
+  &heartbeatComposition,
+  &conversationComposition,
+  &echoComposition,
+  &tidalComposition,
+  &contemplationComposition,
+  &recognitionComposition,
+  &farewellComposition,
+  &awakeningComposition
+};
+
+#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition*))
 
 // === EASING FUNCTIONS ===
 
