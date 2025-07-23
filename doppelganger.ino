@@ -472,65 +472,93 @@ const Composition* compositions[] = {
 // Inspired by Ólafur Arnalds - "Saman"
 // Balanced front/back lighting with wipe animations and proper state management
 const Command friendCommands[] = {
-  // Opening dialogue - both sides awaken together (0:00-0:24)
+  // Opening dialogue - front awakening (0:00-0:24)
   {ANIMATE, PART_1_MASK, WIPE_IN_FROM_BOTTOM, 4000},  // Part 1 awakens (OFF→ON)
   {WAIT, 0, OFF, 800},                                 // Brief pause
-  {ANIMATE, PART_3_MASK, WIPE_IN_FROM_BOTTOM, 4000},  // Part 3 responds quickly (OFF→ON)
+  {ANIMATE, PART_2_MASK, WIPE_IN_FROM_BOTTOM, 4000},  // Part 2 joins front (OFF→ON)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 1200},                                // Both sides lit
+  {WAIT, 0, OFF, 1200},                                // Front pair lit
   
-  // Completing the frame - other parts join (0:24-0:48)
-  {ANIMATE, PART_2_MASK, WIPE_IN_FROM_TOP, 4200},     // Part 2 joins (OFF→ON)
-  {WAIT, 0, OFF, 1000},
-  {ANIMATE, PART_4_MASK, WIPE_IN_FROM_TOP, 4200},     // Part 4 completes (OFF→ON)
+  // Completing the frame - back awakening (0:24-0:48)
+  {ANIMATE, FRONT_MASK, FADE_OUT, 2800},              // Front fades out (ON→OFF)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 2600},                                // All parts lit - harmony
+  {WAIT, 0, OFF, 400},                                 // Brief darkness
+  {ANIMATE, PART_3_MASK, WIPE_IN_FROM_TOP, 4200},     // Part 3 awakens (OFF→ON)
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, PART_4_MASK, WIPE_IN_FROM_TOP, 4200},     // Part 4 completes back (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2600},                                // Back pair lit - harmony
   
   // Alternating conversation - front/back dialogue (0:48-1:18)
-  {ANIMATE, FRONT_MASK, WIPE_OUT_FROM_TOP, 2800},     // Front speaks by leaving (ON→OFF)
+  {ANIMATE, BACK_MASK, WIPE_OUT_FROM_TOP, 2800},      // Back speaks by leaving (ON→OFF)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 400},                                 // Brief back-only moment
+  {WAIT, 0, OFF, 400},                                 // Brief darkness
   {ANIMATE, FRONT_MASK, WIPE_IN_FROM_BOTTOM, 3000},   // Front returns (OFF→ON)
-  {WAIT, 0, OFF, 600},                                 // Both lit
-  {ANIMATE, BACK_MASK, WIPE_OUT_FROM_BOTTOM, 2800},   // Back responds by leaving (ON→OFF)
+  {WAIT, 0, OFF, 600},                                 // Front lit
+  {ANIMATE, FRONT_MASK, WIPE_OUT_FROM_BOTTOM, 2800},  // Front leaves (ON→OFF)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 400},                                 // Brief front-only moment
+  {WAIT, 0, OFF, 400},                                 // Brief darkness
   {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 3000},       // Back returns (OFF→ON)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 2000},                                // Both lit - contemplation
+  {WAIT, 0, OFF, 2000},                                // Back lit - contemplation
   
-  // Individual expressions - balanced front/back (1:18-1:48)
-  {ANIMATE, PART_1_MASK, BREATHE, 4500},              // Part 1 breathes alone (ON→ON)
+  // Individual expressions - sequential solos (1:18-1:48)
+  {ANIMATE, BACK_MASK, FADE_OUT, 1000},               // Clear back first (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {ANIMATE, PART_1_MASK, BREATHE, 4500},              // Part 1 breathes alone (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 800},
-  {ANIMATE, PART_4_MASK, BREATHE, 4500},              // Part 4 responds diagonally (ON→ON)
+  {ANIMATE, PART_2_MASK, BREATHE, 4500},              // Part 2 breathes alone (OFF→ON)
   {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 1000},
-  {ANIMATE, PART_2_MASK, PULSE, 3500},                // Part 2 pulses (ON→ON)
-  {WAIT, 0, OFF, 600},
-  {ANIMATE, PART_3_MASK, PULSE, 3500},                // Part 3 pulses back (ON→ON)
+  {ANIMATE, PART_3_MASK, PULSE, 3500},                // Part 3 pulses alone (OFF→ON)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 2000},                                // All lit - building intensity
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, PART_4_MASK, PULSE, 3500},                // Part 4 pulses alone (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000},                                // Individual expressions complete
   
-  // Wave pattern - cascading wipes (1:48-2:03)
+  // Wave pattern - sequential individual parts (1:48-2:03)
   {ANIMATE, PART_1_MASK, WIPE_OUT_FROM_TOP, 1800},    // Wave starts (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_2_MASK, WIPE_OUT_FROM_TOP, 1800},    // Wave continues (ON→OFF)
-  {WAIT, 0, OFF, 400},                                 // Brief front-dark moment
+  {ANIMATE, PART_2_MASK, WIPE_OUT_FROM_TOP, 1800},    // Wave continues (OFF→OFF, no-op)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
   {ANIMATE, PART_3_MASK, WIPE_OUT_FROM_BOTTOM, 1800}, // Wave to back (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 200},
   {ANIMATE, PART_4_MASK, WIPE_OUT_FROM_BOTTOM, 1800}, // Wave completes (ON→OFF)
   {WAIT_COMPLETE, 0, OFF, 0},
   {WAIT, 0, OFF, 1000},                                // Brief all-dark pause
   
-  // Final emergence - simultaneous awakening (2:03-2:11)
+  // Final emergence - front then back awakening (2:03-2:31)
   {ANIMATE, FRONT_MASK, WIPE_IN_FROM_BOTTOM, 4000},   // Front rises (OFF→ON)
-  {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 4000},       // Back descends (OFF→ON)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 4000},                                // Final harmony - both lit
-  {ANIMATE, FRONT_MASK, FADE_OUT, 2500},              // Gentle fade to end
-  {ANIMATE, BACK_MASK, FADE_OUT, 2500},               // Together into silence
+  {WAIT, 0, OFF, 2000},                                // Front moment
+  {ANIMATE, FRONT_MASK, FADE_OUT, 2000},              // Front fades (ON→OFF)
   {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 56600}                                // Final silence to reach exactly 131000ms total
+  {WAIT, 0, OFF, 1000},                                // Brief silence
+  {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 2000},       // Back descends (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 3000},                                // Extended back moment
+  
+  // Final dialogue - gentle alternation (2:31-2:31)
+  {ANIMATE, BACK_MASK, BREATHE, 3000},                // Back breathes (ON→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},                                 // Pause
+  {ANIMATE, BACK_MASK, FADE_OUT, 1500},               // Back fades (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},                                 // Brief darkness
+  {ANIMATE, FRONT_MASK, FADE_IN, 2000},               // Front returns gently (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1500},                                // Front contemplation
+  {ANIMATE, FRONT_MASK, PULSE, 2500},                 // Front pulses farewell (ON→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},                                // Final pause
+  {ANIMATE, FRONT_MASK, FADE_OUT, 3000},              // Final fade to silence (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000}                                 // Extended silence
 };
 
 // Friend composition - intimate, acoustic feeling  
@@ -538,8 +566,8 @@ const Composition friendCompositionSaman = {
   "Friend - Saman",
   friendCommands,
   sizeof(friendCommands)/sizeof(Command),
-  false,        // Play once
-  131000        // Precise duration: 2:11 = 131 seconds
+  false,        // Play once  
+  151000        // Precise duration: 2:31 = 151 seconds
 };
 
 // Debug animation - flashes first and last LEDs of each part for identification
