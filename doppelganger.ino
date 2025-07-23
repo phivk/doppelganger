@@ -54,6 +54,10 @@
 #define NUM_LEDS 60         // LEDs per strip
 #define BRIGHTNESS 50       // Global brightness (0-255)
 
+// Button and LED configuration
+#define BUTTON_PIN 7        // Button connected to pin 7
+#define CONTROL_LED_PIN 8   // Control LED connected to pin 8
+
 Adafruit_NeoPixel strip1(NUM_LEDS, PIN1, NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel strip2(NUM_LEDS, PIN2, NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel strip3(NUM_LEDS, PIN3, NEO_GRBW + NEO_KHZ800);
@@ -102,6 +106,10 @@ LEDPart parts[] = {
 };
 
 #define NUM_PARTS 4
+
+// Button state variables
+int buttonState = 0;
+int lastButtonState = 0;
 
 // === PRECISE DURATION SYSTEM ===
 // Simple system for exact compositional timing control
@@ -175,6 +183,9 @@ void clearAllParts();
 bool isAnyPartActive();
 void debugFlashFirstLastLEDs(uint8_t brightness);
 
+// === BUTTON CONTROL FUNCTIONS ===
+void handleButtonControl();
+
 // === DECLARATIVE ANIMATION FUNCTIONS ===
 bool isValidPartMask(uint8_t partMask);
 void executeCommand(const Command& cmd);
@@ -234,6 +245,7 @@ void executeCommand(const Command& cmd) {
       
     case WAIT_COMPLETE:
       while (isAnyPartActive()) {
+        handleButtonControl();  // Keep button responsive during animation waits
         updateAllAnimations();
         delay(10);
       }
@@ -264,6 +276,7 @@ void executeComposition(const Composition& comp) {
       
       // Update animations during execution
       while (isAnyPartActive()) {
+        handleButtonControl();  // Keep button responsive during animations
         updateAllAnimations();
         delay(10);
       }
@@ -924,6 +937,30 @@ void debugFlashFirstLastLEDs(uint8_t brightness) {
   strip4.show();
 }
 
+// === BUTTON CONTROL IMPLEMENTATION ===
+
+/*
+ * Handle button input and control LED
+ * This function runs independently of the animation system
+ */
+void handleButtonControl() {
+  buttonState = digitalRead(BUTTON_PIN);
+  
+  // Control LED based on button state (pressed = LOW due to INPUT_PULLUP)
+  if (buttonState == LOW) {
+    digitalWrite(CONTROL_LED_PIN, LOW);
+  } else {
+    digitalWrite(CONTROL_LED_PIN, HIGH);
+  }
+  
+  // Detect button state changes for debugging or additional functionality
+  if (buttonState != lastButtonState) {
+    // Button state changed - could add additional functionality here
+    // For now, just update the last state for next comparison
+    lastButtonState = buttonState;
+  }
+}
+
 // === SETUP ===
 void setup()
 {
@@ -944,6 +981,10 @@ void setup()
   strip4.setBrightness(BRIGHTNESS);
   strip4.show();
   
+  // Initialize button and control LED
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(CONTROL_LED_PIN, OUTPUT);
+  
   // Start with all parts off
   clearAllParts();
 }
@@ -951,6 +992,9 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
+  // Handle button control continuously
+  handleButtonControl();
+  
   // Debug pattern - flash first and last LEDs to identify part boundaries
   executeComposition(debugComposition);
   
