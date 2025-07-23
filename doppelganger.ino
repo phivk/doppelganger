@@ -955,23 +955,15 @@ void debugFlashFirstLastLEDs(uint8_t brightness) {
 // === IDLE STATE IMPLEMENTATION ===
 
 /*
- * Create idle state composition with gentle pulsing of outermost LEDs
- * This uses the first and last LED of each part for a subtle ambient effect
+ * Idle state with all lights off
+ * Keeps all LEDs turned off while waiting for button press
  */
 void updateIdleState() {
   if (idleStartTime == 0) {
     idleStartTime = millis();
   }
   
-  uint32_t elapsed = millis() - idleStartTime;
-  float cycleProgress = (elapsed % 3000) / 3000.0f; // 3-second cycle for more dynamic feel
-  
-  // Use sine wave and easing for expressive pulsing
-  float sineValue = sin(cycleProgress * 2 * PI);
-  float easedValue = easeInOut((sineValue + 1.0) / 2.0); // Convert -1..1 to 0..1 and ease
-  uint8_t brightness = (uint8_t)(10 + 180 * easedValue); // Range: 10-190 for much more expressive effect
-  
-  // Clear all LEDs first
+  // Keep all LEDs off in idle mode
   for (int i = 0; i < NUM_PARTS; i++) {
     LEDPart* part = &parts[i];
     for (int j = part->startLED; j <= part->endLED; j++) {
@@ -979,14 +971,7 @@ void updateIdleState() {
     }
   }
   
-  // Light only the outermost LEDs (first and last of each part)
-  for (int i = 0; i < NUM_PARTS; i++) {
-    LEDPart* part = &parts[i];
-    part->strip->setPixelColor(part->startLED, part->strip->Color(0, 0, 0, brightness));
-    part->strip->setPixelColor(part->endLED, part->strip->Color(0, 0, 0, brightness));
-  }
-  
-  // Update all strips
+  // Update all strips to ensure they remain off
   strip1.show();
   strip2.show();
   strip3.show();
