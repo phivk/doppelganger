@@ -317,18 +317,6 @@ void executeComposition(const Composition& comp) {
 
 // === ANIMATION DEFINITIONS ===
 
-// Wave Pattern: Front wave (1→2), then Back wave (3→4)
-const Command waveCommands[] = {
-  {ANIMATE, PART_1_MASK, FADE_IN, 400},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, PART_2_MASK, FADE_IN, 400},
-  {ANIMATE, FRONT_MASK, FADE_OUT, 400},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_3_MASK, FADE_IN, 400},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, PART_4_MASK, FADE_IN, 400},
-  {ANIMATE, BACK_MASK, FADE_OUT, 400}
-};
 
 // Opposite Pairs: Front (1&2) together, then Back (3&4) together
 const Command oppositePairsCommands[] = {
@@ -339,26 +327,6 @@ const Command oppositePairsCommands[] = {
   {WAIT_COMPLETE, 0, OFF, 0}
 };
 
-// All Together: Rapid alternation between front and back
-const Command allTogetherCommands[] = {
-  {ANIMATE, FRONT_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
-  {ANIMATE, BACK_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
-  {ANIMATE, FRONT_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
-  {ANIMATE, BACK_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
-  {ANIMATE, FRONT_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100},
-  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
-  {ANIMATE, BACK_MASK, FADE_IN, 100},
-  {WAIT, 0, OFF, 100}
-};
 
 // Breathing Sequence: 1→2→3→4 individual breathing
 const Command breathingSequenceCommands[] = {
@@ -375,67 +343,15 @@ const Command breathingSequenceCommands[] = {
   {WAIT_COMPLETE, 0, OFF, 0}
 };
 
-// Chase Pattern: 1→2→3→4 with overlapping fades
-const Command chasePatternCommands[] = {
-  {ANIMATE, PART_1_MASK, FADE_IN, 250},
-  {WAIT, 0, OFF, 125},
-  {ANIMATE, PART_1_MASK, FADE_OUT, 250},
-  {ANIMATE, PART_2_MASK, FADE_IN, 250},
-  {WAIT, 0, OFF, 125},
-  {ANIMATE, PART_2_MASK, FADE_OUT, 250},
-  {ANIMATE, PART_3_MASK, FADE_IN, 250},
-  {WAIT, 0, OFF, 125},
-  {ANIMATE, PART_3_MASK, FADE_OUT, 250},
-  {ANIMATE, PART_4_MASK, FADE_IN, 250},
-  {WAIT, 0, OFF, 125},
-  {ANIMATE, PART_4_MASK, FADE_OUT, 250},
-  {WAIT_COMPLETE, 0, OFF, 0}
-};
 
-// Doppelganger Pattern: Showcases front/back alternation
-const Command doppelgangerPatternCommands[] = {
-  {ANIMATE, FRONT_MASK, PULSE, 400},
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, BACK_MASK, PULSE, 400},
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_1_MASK, PULSE, 267},
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_3_MASK, PULSE, 267},
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_2_MASK, PULSE, 267},
-  {WAIT_COMPLETE, 0, OFF, 0},
-  {WAIT, 0, OFF, 200},
-  {ANIMATE, PART_4_MASK, PULSE, 267},
-  {WAIT_COMPLETE, 0, OFF, 0}
-};
 
 // Composition definitions
-const Composition waveComposition = {
-  "Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false, 0
-};
-
 const Composition oppositePairsComposition = {
   "Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false, 0
 };
 
-const Composition allTogetherComposition = {
-  "All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false, 0
-};
-
 const Composition breathingSequenceComposition = {
   "Breathing Sequence", breathingSequenceCommands, sizeof(breathingSequenceCommands)/sizeof(Command), false, 0
-};
-
-const Composition chasePatternComposition = {
-  "Chase Pattern", chasePatternCommands, sizeof(chasePatternCommands)/sizeof(Command), false, 0
-};
-
-const Composition doppelgangerComposition = {
-  "Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false, 0
 };
 
 // compositions array moved after all definitions
@@ -760,12 +676,8 @@ const Composition awakeningComposition = {
 
 // === COMPOSITIONS ARRAY ===
 const Composition* compositions[] = {
-  &waveComposition,
   &oppositePairsComposition,
-  &allTogetherComposition,
   &breathingSequenceComposition,
-  &chasePatternComposition,
-  &doppelgangerComposition,
   &friendCompositionSaman,
   &mirrorEffectComposition,
   &heartbeatComposition,
