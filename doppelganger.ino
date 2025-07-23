@@ -77,7 +77,13 @@ enum AnimationType {
   WIPE_IN_FROM_TOP,  // wipe in from top to bottom
   WIPE_IN_FROM_BOTTOM,   // wipe in from bottom to top
   WIPE_OUT_FROM_TOP,     // wipe out from top to bottom
-  WIPE_OUT_FROM_BOTTOM   // wipe out from bottom to top
+  WIPE_OUT_FROM_BOTTOM,   // wipe out from bottom to top
+  SHIMMER,           // rapid micro-pulses at different intensities
+  TWINKLE,           // individual LEDs randomly fade in/out like stars
+  SPIRAL,            // wipe with varying speeds creating spiral effect
+  FLUTTER,           // quick organic brightness variations like candlelight
+  CASCADE,           // multi-stage wave where intensity builds then releases
+  STROBE             // precise rhythmic flashing with customizable patterns
 };
 
 // Animation state tracks the progress of each part's current animation
@@ -122,6 +128,7 @@ enum SystemState {
 
 SystemState currentState = IDLE;
 uint32_t idleStartTime = 0;
+int currentCompositionIndex = 0;
 
 // === PRECISE DURATION SYSTEM ===
 // Simple system for exact compositional timing control
@@ -471,7 +478,17 @@ const Composition* compositions[] = {
   &allTogetherComposition,
   &breathingSequenceComposition,
   &chasePatternComposition,
-  &doppelgangerComposition
+  &doppelgangerComposition,
+  &friendCompositionSaman,
+  &mirrorEffectComposition,
+  &heartbeatComposition,
+  &conversationComposition,
+  &echoComposition,
+  &tidalComposition,
+  &contemplationComposition,
+  &recognitionComposition,
+  &farewellComposition,
+  &awakeningComposition
 };
 
 #define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition*))
@@ -619,6 +636,208 @@ const Composition debugComposition = {
   0
 };
 
+// === NEW COMPOSITION PATTERNS ===
+
+// Mirror Effect - Alternating diagonal patterns enhancing doppelganger concept
+const Command mirrorEffectCommands[] = {
+  {ANIMATE, DIAGONAL_1_4_MASK, FADE_IN, 600},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, DIAGONAL_1_4_MASK, FADE_OUT, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {ANIMATE, DIAGONAL_2_3_MASK, FADE_IN, 600},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, DIAGONAL_2_3_MASK, FADE_OUT, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, DIAGONAL_1_4_MASK, PULSE, 800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, DIAGONAL_2_3_MASK, PULSE, 800},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Heartbeat - Double-pulse pattern moving between front and back
+const Command heartbeatCommands[] = {
+  {ANIMATE, FRONT_MASK, PULSE, 250},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, FRONT_MASK, PULSE, 250},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, BACK_MASK, PULSE, 250},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, BACK_MASK, PULSE, 250},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800}
+};
+
+// Conversation - Individual parts taking turns with varying durations
+const Command conversationCommands[] = {
+  {ANIMATE, PART_1_MASK, FLUTTER, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_3_MASK, FLUTTER, 800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, FLUTTER, 1500},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, PART_4_MASK, FLUTTER, 600},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_1_MASK, FLUTTER, 900},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, FLUTTER, 1100},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Echo - One side triggers, opposite responds with diminished intensity
+const Command echoCommands[] = {
+  {ANIMATE, FRONT_MASK, CASCADE, 1000},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, BACK_MASK, SHIMMER, 800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_3_MASK, CASCADE, 1000},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_1_MASK, SHIMMER, 800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_2_MASK, CASCADE, 1000},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_4_MASK, SHIMMER, 800},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Tidal - Slow wipe patterns that ebb and flow like ocean waves
+const Command tidalCommands[] = {
+  {ANIMATE, FRONT_MASK, WIPE_IN_FROM_BOTTOM, 2000},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, FRONT_MASK, WIPE_OUT_FROM_TOP, 1800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 600},
+  {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 2200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 900},
+  {ANIMATE, BACK_MASK, WIPE_OUT_FROM_BOTTOM, 1900},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 700}
+};
+
+// Contemplation - Extended breathe cycles with long pauses
+const Command contemplationCommands[] = {
+  {ANIMATE, PART_1_MASK, BREATHE, 3000},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000},
+  {ANIMATE, PART_3_MASK, BREATHE, 3200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2200},
+  {ANIMATE, PART_2_MASK, BREATHE, 2800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1800},
+  {ANIMATE, PART_4_MASK, BREATHE, 3400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2500}
+};
+
+// Recognition - Quick individual flashes as parts "notice" each other
+const Command recognitionCommands[] = {
+  {ANIMATE, PART_1_MASK, STROBE, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_3_MASK, STROBE, 300},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, STROBE, 350},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 150},
+  {ANIMATE, PART_4_MASK, STROBE, 300},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, DIAGONAL_1_4_MASK, STROBE, 500},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, DIAGONAL_2_3_MASK, STROBE, 500},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Farewell - Gradual cascade where each part dims in sequence
+const Command farewellCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 500},
+  {ANIMATE, PART_2_MASK, FADE_IN, 500},
+  {ANIMATE, PART_3_MASK, FADE_IN, 500},
+  {ANIMATE, PART_4_MASK, FADE_IN, 500},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},
+  {ANIMATE, PART_1_MASK, FADE_OUT, 800},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_2_MASK, FADE_OUT, 800},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_3_MASK, FADE_OUT, 800},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, PART_4_MASK, FADE_OUT, 800},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1500}
+};
+
+// Awakening - Reverse cascade where parts illuminate in morning-like progression
+const Command awakeningCommands[] = {
+  {ANIMATE, PART_4_MASK, SPIRAL, 1500},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, SPIRAL, 1500},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, SPIRAL, 1500},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_1_MASK, SPIRAL, 1500},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, ALL_PARTS_MASK, TWINKLE, 2000},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000}
+};
+
+// Composition definitions for new patterns
+const Composition mirrorEffectComposition = {
+  "Mirror Effect", mirrorEffectCommands, sizeof(mirrorEffectCommands)/sizeof(Command), false, 0
+};
+
+const Composition heartbeatComposition = {
+  "Heartbeat", heartbeatCommands, sizeof(heartbeatCommands)/sizeof(Command), false, 0
+};
+
+const Composition conversationComposition = {
+  "Conversation", conversationCommands, sizeof(conversationCommands)/sizeof(Command), false, 0
+};
+
+const Composition echoComposition = {
+  "Echo", echoCommands, sizeof(echoCommands)/sizeof(Command), false, 0
+};
+
+const Composition tidalComposition = {
+  "Tidal", tidalCommands, sizeof(tidalCommands)/sizeof(Command), false, 0
+};
+
+const Composition contemplationComposition = {
+  "Contemplation", contemplationCommands, sizeof(contemplationCommands)/sizeof(Command), false, 0
+};
+
+const Composition recognitionComposition = {
+  "Recognition", recognitionCommands, sizeof(recognitionCommands)/sizeof(Command), false, 0
+};
+
+const Composition farewellComposition = {
+  "Farewell", farewellCommands, sizeof(farewellCommands)/sizeof(Command), false, 0
+};
+
+const Composition awakeningComposition = {
+  "Awakening", awakeningCommands, sizeof(awakeningCommands)/sizeof(Command), false, 0
+};
+
 // === EASING FUNCTIONS ===
 
 /*
@@ -717,6 +936,11 @@ void updatePartAnimation(int partIndex) {
       case BREATHE:
       case WIPE_OUT_FROM_TOP:
       case WIPE_OUT_FROM_BOTTOM:
+      case SHIMMER:
+      case TWINKLE:
+      case FLUTTER:
+      case CASCADE:
+      case STROBE:
         part->currentBrightness = 0;
         // Set all LEDs to off
         for (int i = part->startLED; i <= part->endLED; i++) {
@@ -727,6 +951,7 @@ void updatePartAnimation(int partIndex) {
       case FADE_IN:
       case WIPE_IN_FROM_TOP:
       case WIPE_IN_FROM_BOTTOM:
+      case SPIRAL:
         part->currentBrightness = 255;
         // Set all LEDs to full brightness
         for (int i = part->startLED; i <= part->endLED; i++) {
@@ -783,8 +1008,66 @@ void updatePartAnimation(int partIndex) {
     case WIPE_IN_FROM_BOTTOM:
     case WIPE_OUT_FROM_TOP:
     case WIPE_OUT_FROM_BOTTOM:
-      // Wipe animations are handled LED by LED, brightness set to full
+    case SPIRAL:
+      // Wipe and spiral animations are handled LED by LED, brightness set to full
       brightness = 255;
+      break;
+      
+    case SHIMMER:
+      // Rapid micro-pulses with varying intensity
+      {
+        float shimmerFreq = 8.0; // 8 pulses per animation duration
+        float shimmerPhase = progress * shimmerFreq * 2.0 * PI;
+        float shimmerBase = 0.3 + 0.7 * sin(shimmerPhase); // Varies 0.3-1.0
+        float shimmerNoise = 0.8 + 0.2 * sin(shimmerPhase * 1.7); // Add complexity
+        brightness = (uint8_t)(255 * shimmerBase * shimmerNoise * (1.0 - progress * 0.2)); // Slight decay
+      }
+      break;
+      
+    case TWINKLE:
+      // Individual LEDs randomly fade in/out - handled per LED below
+      brightness = 255;
+      break;
+      
+    case FLUTTER:
+      // Organic candlelight-like variations
+      {
+        float flutter1 = sin(progress * 12.0 * PI + 0.3);
+        float flutter2 = sin(progress * 8.7 * PI + 1.2);
+        float flutter3 = sin(progress * 15.3 * PI + 2.1);
+        float flutterBase = 0.4 + 0.6 * ((flutter1 + flutter2 * 0.7 + flutter3 * 0.4) / 2.1);
+        brightness = (uint8_t)(255 * max(0.0, min(1.0, flutterBase)));
+      }
+      break;
+      
+    case CASCADE:
+      // Multi-stage wave with building intensity
+      {
+        if (progress <= 0.3) {
+          // Build phase
+          float buildPhase = progress / 0.3;
+          brightness = (uint8_t)(255 * buildPhase * buildPhase);
+        } else if (progress <= 0.7) {
+          // Peak phase
+          float peakPhase = (progress - 0.3) / 0.4;
+          float peakIntensity = 1.0 + 0.5 * sin(peakPhase * 6.0 * PI);
+          brightness = (uint8_t)(255 * min(1.0, peakIntensity));
+        } else {
+          // Release phase
+          float releasePhase = (progress - 0.7) / 0.3;
+          brightness = (uint8_t)(255 * (1.0 - releasePhase * releasePhase));
+        }
+      }
+      break;
+      
+    case STROBE:
+      // Precise rhythmic flashing
+      {
+        float strobeFreq = 6.0; // 6 flashes per animation duration
+        float strobePhase = progress * strobeFreq;
+        float strobeCycle = strobePhase - floor(strobePhase);
+        brightness = (strobeCycle < 0.3) ? 255 : 0; // 30% on, 70% off per cycle
+      }
       break;
       
     case OFF:
@@ -794,81 +1077,130 @@ void updatePartAnimation(int partIndex) {
   
   part->currentBrightness = brightness;
   
-  // Handle wipe animations LED by LED, others apply to all LEDs
+  // Handle special animations LED by LED, others apply to all LEDs
   if (part->animation.type == WIPE_IN_FROM_TOP || 
       part->animation.type == WIPE_IN_FROM_BOTTOM ||
       part->animation.type == WIPE_OUT_FROM_TOP || 
-      part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+      part->animation.type == WIPE_OUT_FROM_BOTTOM ||
+      part->animation.type == SPIRAL ||
+      part->animation.type == TWINKLE) {
     
     int totalLEDs = part->endLED - part->startLED + 1;
-    
-    // Apply symmetrical easing to all wipe animations for consistent, natural movement
-    float easedProgress = easeInOut(progress);  // Symmetrical: slow start, fast middle, slow end
-    
-    // Calculate position with sub-LED precision for smooth fading
-    float exactPosition = totalLEDs * easedProgress;
-    int activeLEDs = (int)exactPosition;
-    float fadeAmount = exactPosition - activeLEDs;  // Fractional part for fade
     
     // Clear all LEDs first
     for (int i = part->startLED; i <= part->endLED; i++) {
       part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
     }
     
-    // Light LEDs based on wipe direction and type with fading
-    for (int i = 0; i <= activeLEDs && i < totalLEDs; i++) {
-      int ledIndex;
-      uint8_t ledBrightness = 0;
-      bool isWipeIn = (part->animation.type == WIPE_IN_FROM_TOP || part->animation.type == WIPE_IN_FROM_BOTTOM);
-      
-      // Calculate LED index based on direction
-      switch (part->animation.type) {
-        case WIPE_IN_FROM_TOP:
-        case WIPE_OUT_FROM_TOP:
-          ledIndex = part->startLED + i;
-          break;
-          
-        case WIPE_IN_FROM_BOTTOM:
-        case WIPE_OUT_FROM_BOTTOM:
-          ledIndex = part->endLED - i;
-          break;
-          
-        default:
-          continue;
-      }
-      
-      // Skip if LED index is out of bounds
-      if (ledIndex < part->startLED || ledIndex > part->endLED) continue;
-      
-      // Calculate brightness with fading
-      if (i < activeLEDs) {
-        // Fully lit LEDs
-        ledBrightness = isWipeIn ? 255 : 0;
-      } else if (i == activeLEDs && fadeAmount > 0) {
-        // Fading LED at the edge
-        if (isWipeIn) {
-          ledBrightness = (uint8_t)(255 * fadeAmount);
-        } else {
-          ledBrightness = (uint8_t)(255 * (1.0 - fadeAmount));
+    if (part->animation.type == TWINKLE) {
+      // TWINKLE: Individual LEDs randomly fade in/out like stars
+      for (int i = 0; i < totalLEDs; i++) {
+        int ledIndex = part->startLED + i;
+        // Use LED index as seed for consistent but varied behavior per LED
+        float ledSeed = (float)(ledIndex * 7 + 13) / 37.0; // Pseudo-random seed
+        float ledPhase = fmod(ledSeed + progress * 3.0, 1.0); // Different timing per LED
+        
+        // Create sparkle effect with varying intensities
+        float twinkleIntensity = 0.0;
+        if (ledPhase < 0.1) {
+          // Quick fade in
+          twinkleIntensity = ledPhase / 0.1;
+        } else if (ledPhase < 0.3) {
+          // Hold bright
+          twinkleIntensity = 1.0;
+        } else if (ledPhase < 0.5) {
+          // Quick fade out
+          twinkleIntensity = (0.5 - ledPhase) / 0.2;
+        }
+        // else stay dark (50% of cycle is dark)
+        
+        // Add randomness to which LEDs are active
+        float activation = sin(ledSeed * 6.28 + progress * 4.0) * 0.5 + 0.5;
+        if (activation > 0.7) { // Only 30% of LEDs active at any time
+          uint8_t ledBrightness = (uint8_t)(255 * twinkleIntensity);
+          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
         }
       }
+    } else if (part->animation.type == SPIRAL) {
+      // SPIRAL: Wipe with varying speeds creating spiral effect
+      float spiralFreq = 2.0; // Two spiral waves
+      for (int i = 0; i < totalLEDs; i++) {
+        float ledPosition = (float)i / (totalLEDs - 1); // 0.0 to 1.0
+        float spiralOffset = sin(ledPosition * spiralFreq * 2.0 * PI) * 0.2; // Spiral delay
+        float ledProgress = progress - spiralOffset;
+        
+        if (ledProgress > 0.0 && ledProgress < 1.0) {
+          float ledIntensity = sin(ledProgress * PI); // Sine wave intensity
+          uint8_t ledBrightness = (uint8_t)(255 * ledIntensity);
+          int ledIndex = part->startLED + i;
+          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
+        }
+      }
+    } else {
+      // Original wipe animations
+      // Apply symmetrical easing to all wipe animations for consistent, natural movement
+      float easedProgress = easeInOut(progress);  // Symmetrical: slow start, fast middle, slow end
       
-      part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
-    }
+      // Calculate position with sub-LED precision for smooth fading
+      float exactPosition = totalLEDs * easedProgress;
+      int activeLEDs = (int)exactPosition;
+      float fadeAmount = exactPosition - activeLEDs;  // Fractional part for fade
     
-    // For wipe out animations, light the remaining unwiped LEDs
-    if (part->animation.type == WIPE_OUT_FROM_TOP || part->animation.type == WIPE_OUT_FROM_BOTTOM) {
-      for (int i = activeLEDs + 1; i < totalLEDs; i++) {
+      // Light LEDs based on wipe direction and type with fading
+      for (int i = 0; i <= activeLEDs && i < totalLEDs; i++) {
         int ledIndex;
+        uint8_t ledBrightness = 0;
+        bool isWipeIn = (part->animation.type == WIPE_IN_FROM_TOP || part->animation.type == WIPE_IN_FROM_BOTTOM);
         
-        if (part->animation.type == WIPE_OUT_FROM_TOP) {
-          ledIndex = part->startLED + i;
-        } else {  // WIPE_OUT_FROM_BOTTOM
-          ledIndex = part->endLED - i;
+        // Calculate LED index based on direction
+        switch (part->animation.type) {
+          case WIPE_IN_FROM_TOP:
+          case WIPE_OUT_FROM_TOP:
+            ledIndex = part->startLED + i;
+            break;
+            
+          case WIPE_IN_FROM_BOTTOM:
+          case WIPE_OUT_FROM_BOTTOM:
+            ledIndex = part->endLED - i;
+            break;
+            
+          default:
+            continue;
         }
         
-        if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
-          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 255));
+        // Skip if LED index is out of bounds
+        if (ledIndex < part->startLED || ledIndex > part->endLED) continue;
+        
+        // Calculate brightness with fading
+        if (i < activeLEDs) {
+          // Fully lit LEDs
+          ledBrightness = isWipeIn ? 255 : 0;
+        } else if (i == activeLEDs && fadeAmount > 0) {
+          // Fading LED at the edge
+          if (isWipeIn) {
+            ledBrightness = (uint8_t)(255 * fadeAmount);
+          } else {
+            ledBrightness = (uint8_t)(255 * (1.0 - fadeAmount));
+          }
+        }
+        
+        part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
+      }
+      
+      // For wipe out animations, light the remaining unwiped LEDs
+      if (part->animation.type == WIPE_OUT_FROM_TOP || part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+        for (int i = activeLEDs + 1; i < totalLEDs; i++) {
+          int ledIndex;
+          
+          if (part->animation.type == WIPE_OUT_FROM_TOP) {
+            ledIndex = part->startLED + i;
+          } else {  // WIPE_OUT_FROM_BOTTOM
+            ledIndex = part->endLED - i;
+          }
+          
+          if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
+            part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 255));
+          }
         }
       }
     }
@@ -1056,14 +1388,21 @@ void loop()
       break;
       
     case PLAYING_COMPOSITION:
-      // Play the main composition (now loops indefinitely)
-      executeComposition(friendCompositionSaman);
+      // Play current composition from the array
+      executeComposition(*compositions[currentCompositionIndex]);
       
-      // Only reach here if composition was interrupted by button press
-      // State is already set to IDLE in executeComposition when button pressed
-      idleStartTime = 0; // Reset idle timing
-      clearAllParts(); // Ensure clean transition to idle
-      delay(100); // Brief pause before starting idle
+      // Only reach here if composition completed naturally or was interrupted
+      if (currentState == PLAYING_COMPOSITION) {
+        // Composition completed naturally, move to next one
+        currentCompositionIndex = (currentCompositionIndex + 1) % NUM_COMPOSITIONS;
+        clearAllParts(); // Clean transition between compositions
+        delay(500); // Brief pause between compositions
+      } else {
+        // Composition was interrupted by button press (state changed to IDLE)
+        idleStartTime = 0; // Reset idle timing
+        clearAllParts(); // Ensure clean transition to idle
+        delay(100); // Brief pause before starting idle
+      }
       break;
   }
 }
