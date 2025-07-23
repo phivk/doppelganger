@@ -250,13 +250,29 @@ void executeCommand(const Command& cmd) {
       break;
       
     case WAIT:
-      // Use fixed delay - no tempo adjustment to timing
-      delay(cmd.duration);
+      {
+        // Use fixed delay with button checking every 10ms for responsiveness
+        uint32_t waitStart = millis();
+        while (millis() - waitStart < cmd.duration) {
+          handleButtonControl();
+          if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+            buttonPressed = false;
+            currentState = IDLE;
+            return; // Exit immediately to stop composition
+          }
+          delay(10);
+        }
+      }
       break;
       
     case WAIT_COMPLETE:
       while (isAnyPartActive()) {
         handleButtonControl();  // Keep button responsive during animation waits
+        if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+          buttonPressed = false;
+          currentState = IDLE;
+          return; // Exit immediately to stop composition
+        }
         updateAllAnimations();
         delay(10);
       }
@@ -283,16 +299,34 @@ void executeComposition(const Composition& comp) {
   
   do {
     for (int i = 0; i < comp.commandCount; i++) {
+      // Check for button press before executing each command
+      handleButtonControl();
+      if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+        buttonPressed = false;
+        currentState = IDLE;
+        return; // Exit composition immediately
+      }
+      
       executeCommand(comp.commands[i]);
+      
+      // If executeCommand changed state to IDLE (button was pressed), exit
+      if (currentState == IDLE) {
+        return;
+      }
       
       // Update animations during execution
       while (isAnyPartActive()) {
         handleButtonControl();  // Keep button responsive during animations
+        if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+          buttonPressed = false;
+          currentState = IDLE;
+          return; // Exit composition immediately
+        }
         updateAllAnimations();
         delay(10);
       }
     }
-  } while (comp.looping);
+  } while (comp.looping && currentState == PLAYING_COMPOSITION);
 }
 
 // === ANIMATION DEFINITIONS ===
