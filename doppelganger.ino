@@ -30,7 +30,7 @@
  * - Front parts (1 & 2) can be on together - FRONT_MASK: 0b0011
  * - Back parts (3 & 4) can be on together  - BACK_MASK:  0b1100
  * - Diagonal parts (1 & 4) or (2 & 3) can be on together - DIAGONAL_MASKS
- * - Side combinations (1 & 3) or (2 & 4) are forbidden and automatically validated
+ * - Side combinations (1 & 3) or (2 & 4) are forbidden
  * 
  * DECLARATIVE SYSTEM:
  * Animations are defined using command arrays with three command types:
@@ -130,30 +130,6 @@ SystemState currentState = IDLE;
 uint32_t idleStartTime = 0;
 int currentCompositionIndex = 0;
 
-// === PRECISE DURATION SYSTEM ===
-// Simple system for exact compositional timing control
-
-// Global composition timing tracking (optional)
-uint32_t compositionStartTime = 0;
-uint32_t compositionTotalDuration = 0;
-
-// Start composition timing tracking
-void startCompositionTiming(uint32_t totalDuration) {
-  compositionStartTime = millis();
-  compositionTotalDuration = totalDuration;
-}
-
-// Get elapsed time in current composition (for debugging/monitoring)
-uint32_t getCompositionElapsed() {
-  if (compositionStartTime == 0) return 0;
-  return millis() - compositionStartTime;
-}
-
-// Check if composition should be complete (for validation)
-bool isCompositionTimeComplete() {
-  if (compositionStartTime == 0 || compositionTotalDuration == 0) return false;
-  return getCompositionElapsed() >= compositionTotalDuration;
-}
 
 // === DECLARATIVE COMPOSITION SYSTEM ===
 
@@ -173,13 +149,13 @@ struct Command {
   uint16_t duration;
 };
 
-// Composition definition - a sequence of commands with precise duration control
+// Composition definition - a sequence of commands
 struct Composition {
   const char* name;
   const Command* commands;
   uint8_t commandCount;
   bool looping;
-  uint32_t totalDuration;          // Total composition duration in ms (0 = no duration control)
+  uint32_t totalDuration;          // Total composition duration in ms (for documentation)
 };
 
 // Part bitmask definitions (1-indexed)
@@ -190,8 +166,6 @@ struct Composition {
 
 #define FRONT_MASK  0b0011  // Parts 1 & 2
 #define BACK_MASK   0b1100  // Parts 3 & 4
-#define A_SIDE_MASK 0b0101  // Parts 1 & 3 (INVALID - violates constraint)
-#define B_SIDE_MASK 0b1010  // Parts 2 & 4 (INVALID - violates constraint)
 #define DIAGONAL_1_4_MASK 0b1001  // Parts 1 & 4 (diagonal - VALID)
 #define DIAGONAL_2_3_MASK 0b0110  // Parts 2 & 3 (diagonal - VALID)
 #define ALL_PARTS_MASK 0b1111  // All parts together (allowed for testing)
@@ -235,10 +209,6 @@ bool isValidPartMask(uint8_t partMask) {
   bool hasFront = (partMask & FRONT_MASK) != 0;  // Check if any front parts (1&2)
   bool hasBack = (partMask & BACK_MASK) != 0;    // Check if any back parts (3&4)
   
-  // Check for invalid side combinations (1&3 or 2&4)
-  if (partMask == A_SIDE_MASK || partMask == B_SIDE_MASK) {
-    return false;
-  }
   
   return !(hasFront && hasBack);  // Invalid if both front AND back are on
 }
@@ -310,10 +280,6 @@ void executeCommand(const Command& cmd) {
  * Execute a complete composition (sequence of commands)
  */
 void executeComposition(const Composition& comp) {
-  // Start composition timing if specified
-  if (comp.totalDuration > 0) {
-    startCompositionTiming(comp.totalDuration);
-  }
   
   clearAllParts();
   
@@ -589,33 +555,6 @@ const Composition friendCompositionSaman = {
   131000        // Precise duration: 2:11 = 131 seconds
 };
 
-// Debug animation - flashes first and last LEDs of each part for identification
-
-const Command debugCommands[] = {
-  // Flash first and last LEDs bright
-  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
-  {WAIT, 0, OFF, 300},                      // Hold for visibility
-  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
-  {WAIT, 0, OFF, 200},                      // Brief pause
-  
-  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
-  {WAIT, 0, OFF, 300},                      // Hold for visibility  
-  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
-  {WAIT, 0, OFF, 200},                      // Brief pause
-  
-  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
-  {WAIT, 0, OFF, 300},                      // Hold for visibility
-  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
-  {WAIT, 0, OFF, 500}                       // Longer pause after debug
-};
-
-const Composition debugComposition = {
-  "Debug - First/Last LEDs",
-  debugCommands,
-  sizeof(debugCommands)/sizeof(Command),
-  false,
-  0
-};
 
 // === NEW COMPOSITION PATTERNS ===
 
@@ -848,16 +787,6 @@ const Composition* compositions[] = {
  * All functions take a progress value from 0.0 to 1.0 and return an eased value
  */
 
-// Ease in (slow start, accelerating)
-float easeIn(float t) {
-  return t * t * t;  // Cubic ease-in
-}
-
-// Ease out (fast start, decelerating) 
-float easeOut(float t) {
-  float f = t - 1.0;
-  return f * f * f + 1.0;  // Cubic ease-out
-}
 
 // Ease in-out (slow start and end, fast middle)
 float easeInOut(float t) {
