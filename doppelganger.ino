@@ -587,7 +587,7 @@ const Composition friendCompositionSaman = {
   "Friend - Saman",
   friendCommands,
   sizeof(friendCommands)/sizeof(Command),
-  false,        // Play once  
+  true,         // Loop indefinitely  
   131000        // Precise duration: 2:11 = 131 seconds
 };
 
@@ -1056,11 +1056,11 @@ void loop()
       break;
       
     case PLAYING_COMPOSITION:
-      // Play the main composition
+      // Play the main composition (now loops indefinitely)
       executeComposition(friendCompositionSaman);
       
-      // After composition completes, return to idle
-      currentState = IDLE;
+      // Only reach here if composition was interrupted by button press
+      // State is already set to IDLE in executeComposition when button pressed
       idleStartTime = 0; // Reset idle timing
       clearAllParts(); // Ensure clean transition to idle
       delay(100); // Brief pause before starting idle
