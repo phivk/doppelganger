@@ -1,11 +1,11 @@
 /*
  * ==============================================================================
- * DOPPELGÄNGER - Part-Based LED Animation Framework
+ * DOPPELGÄNGER - Declarative LED Animation Framework
  * ==============================================================================
  * 
- * This Arduino sketch implements a flexible animation framework for controlling
- * multiple LED strips divided into logical "parts" that can be animated 
- * independently or in coordination.
+ * This Arduino sketch implements a declarative animation framework for controlling
+ * multiple LED strips divided into logical "parts" that can be animated using
+ * command-based compositions with 1-indexed bitmask representation.
  * 
  * HARDWARE SETUP:
  * - Strip 1: Connected to pin 2, 60 LEDs (GRBW NeoPixels)
@@ -13,28 +13,40 @@
  * - Strip 3: Connected to pin 4, 60 LEDs (GRBW NeoPixels)
  * - Strip 4: Connected to pin 5, 60 LEDs (GRBW NeoPixels)
  * 
- * PART LAYOUT:
+ * PART LAYOUT (1-INDEXED):
  * The system uses 4 logical parts arranged in a frame:
- * - Part 0: Strip1, LEDs 40-59 (Front A-Side)
- * - Part 1: Strip2, LEDs 40-59 (Front B-Side)
- * - Part 2: Strip3, LEDs 40-59 (Back A-Side)
- * - Part 3: Strip4, LEDs 40-59 (Back B-Side)
+ * - Part 1: Strip1, LEDs 36-59 (Front A-Side) - Bitmask: 0b0001
+ * - Part 2: Strip2, LEDs 36-59 (Front B-Side) - Bitmask: 0b0010
+ * - Part 3: Strip3, LEDs 36-59 (Back A-Side)  - Bitmask: 0b0100
+ * - Part 4: Strip4, LEDs 36-59 (Back B-Side)  - Bitmask: 0b1000
  * 
  * Physical Layout:
- *   Front: [Part 0] [Part 1]
- *   Back:  [Part 2] [Part 3]
+ *   Front: [Part 1] [Part 2]
+ *   Back:  [Part 3] [Part 4]
  *          A Side   B Side
  * 
- * CONSTRAINTS:
+ * CRITICAL CONSTRAINT:
  * - Only FRONT or BACK can be lit at any time, never both
- * - Front parts (0 & 1) can be on together
- * - Back parts (2 & 3) can be on together
- * - Any front + back combination is forbidden
+ * - Front parts (1 & 2) can be on together - FRONT_MASK: 0b0011
+ * - Back parts (3 & 4) can be on together  - BACK_MASK:  0b1100
+ * - Diagonal parts (1 & 4) or (2 & 3) can be on together - DIAGONAL_MASKS
+ * - Side combinations (1 & 3) or (2 & 4) are forbidden and automatically validated
+ * 
+ * DECLARATIVE SYSTEM:
+ * Animations are defined using command arrays with three command types:
+ * - ANIMATE: Start animation on parts specified by bitmask
+ * - WAIT: Pause for specified duration
+ * - WAIT_COMPLETE: Wait for all active animations to finish
+ * 
+ * TEMPO SYSTEM:
+ * 20-second cycles with dynamic tempo: slow (0.3x) → fast (3.0x) → slow
+ * All durations automatically adjust to current tempo for evolving experience
  * 
  * ==============================================================================
  */
 
 #include <Adafruit_NeoPixel.h>
+#include <math.h>
 
 // === HARDWARE CONFIGURATION ===
 #define PIN1 2              // Strip 1 data pin
@@ -43,6 +55,10 @@
 #define PIN4 5              // Strip 4 data pin
 #define NUM_LEDS 60         // LEDs per strip
 #define BRIGHTNESS 50       // Global brightness (0-255)
+
+// Button and LED configuration
+#define BUTTON_PIN 7        // Button connected to pin 7
+#define CONTROL_LED_PIN 8   // Control LED connected to pin 8
 
 Adafruit_NeoPixel strip1(NUM_LEDS, PIN1, NEO_GRBW + NEO_KHZ800);
 Adafruit_NeoPixel strip2(NUM_LEDS, PIN2, NEO_GRBW + NEO_KHZ800);
@@ -53,11 +69,15 @@ Adafruit_NeoPixel strip4(NUM_LEDS, PIN4, NEO_GRBW + NEO_KHZ800);
 
 // Animation types define different lighting behaviors
 enum AnimationType {
-  OFF,        // Immediate off
-  FADE_IN,    // 0 → full brightness over duration
-  FADE_OUT,   // full brightness → 0 over duration  
-  PULSE,      // fade in then fade out (complete cycle)
-  BREATHE     // slow inhale (70%), quick exhale (30%)
+  OFF,                // Immediate off
+  FADE_IN,           // 0 → full brightness over duration
+  FADE_OUT,          // full brightness → 0 over duration  
+  PULSE,             // fade in then fade out (complete cycle)
+  BREATHE,           // slow inhale (70%), quick exhale (30%)
+  WIPE_IN_FROM_TOP,  // wipe in from top to bottom
+  WIPE_IN_FROM_BOTTOM,   // wipe in from bottom to top
+  WIPE_OUT_FROM_TOP,     // wipe out from top to bottom
+  WIPE_OUT_FROM_BOTTOM   // wipe out from bottom to top
 };
 
 // Animation state tracks the progress of each part's current animation
@@ -78,102 +98,569 @@ struct LEDPart {
 };
 
 // Define the 4 parts that make up our LED layout
-// Each part uses the full 40-59 LED range on each strip
+// NOTE: Array is 0-indexed for internal use, but bitmasks are 1-indexed
+// Part 1 (bitmask 0b0001) maps to parts[0], Part 2 (0b0010) to parts[1], etc.
 LEDPart parts[] = {
-  {&strip1, 40, 59, 0, {OFF, 0, 0, false}},   // Part 0: Strip1 LEDs 40-59
-  {&strip2, 40, 59, 0, {OFF, 0, 0, false}},   // Part 1: Strip2 LEDs 40-59
-  {&strip3, 40, 59, 0, {OFF, 0, 0, false}},   // Part 2: Strip3 LEDs 40-59
-  {&strip4, 40, 59, 0, {OFF, 0, 0, false}}    // Part 3: Strip4 LEDs 40-59
+  {&strip1, 36, 59, 0, {OFF, 0, 0, false}},   // parts[0] = Part 1: Strip1 LEDs 36-59
+  {&strip2, 36, 59, 0, {OFF, 0, 0, false}},   // parts[1] = Part 2: Strip2 LEDs 36-59
+  {&strip3, 36, 59, 0, {OFF, 0, 0, false}},   // parts[2] = Part 3: Strip3 LEDs 36-59
+  {&strip4, 36, 59, 0, {OFF, 0, 0, false}}    // parts[3] = Part 4: Strip4 LEDs 36-59
 };
 
 #define NUM_PARTS 4
 
-// === DYNAMIC TEMPO SYSTEM ===
-struct TempoState {
-  float currentSpeed;        // Current speed multiplier (1.0 = normal, 0.5 = half speed, 2.0 = double speed)
-  float targetSpeed;         // Target speed we're moving towards
-  uint32_t lastUpdateTime;   // Last time we updated the tempo
-  int phase;                 // 0 = accelerating, 1 = decelerating
-  uint32_t cycleStartTime;   // When the current cycle started
-  uint16_t cycleDuration;    // How long each complete cycle should take
+// Button state variables
+int buttonState = 0;
+int lastButtonState = 0;
+bool buttonPressed = false;
+
+// System state variables
+enum SystemState {
+  IDLE,
+  PLAYING_COMPOSITION
 };
 
-TempoState tempo = {0.3, 0.3, 0, 0, 0, 20000}; // Start slow (0.3x speed), 20 second cycles
+SystemState currentState = IDLE;
+uint32_t idleStartTime = 0;
 
-// Calculate current tempo based on acceleration curve
-void updateTempo() {
-  uint32_t currentTime = millis();
-  uint32_t elapsed = currentTime - tempo.cycleStartTime;
-  
-  // If we've completed a cycle, start a new one
-  if (elapsed >= tempo.cycleDuration) {
-    tempo.cycleStartTime = currentTime;
-    elapsed = 0;
-  }
-  
-  // Calculate progress through the cycle (0.0 to 1.0)
-  float cycleProgress = (float)elapsed / (float)tempo.cycleDuration;
-  
-  // Define the speed curve: slow start, accelerate to peak at 70%, then quick return
-  float targetSpeed;
-  if (cycleProgress <= 0.7) {
-    // Acceleration phase: 70% of cycle time
-    // Use exponential curve for smooth acceleration
-    float accelerationProgress = cycleProgress / 0.7;
-    targetSpeed = 0.3 + (3.0 - 0.3) * (accelerationProgress * accelerationProgress);
-  } else {
-    // Deceleration phase: 30% of cycle time (quick but smooth return)
-    float decelerationProgress = (cycleProgress - 0.7) / 0.3;
-    // Use inverse exponential for quick but smooth deceleration
-    targetSpeed = 3.0 - (3.0 - 0.3) * (decelerationProgress * decelerationProgress);
-  }
-  
-  // Smooth the speed changes to avoid jarring transitions
-  float speedDiff = targetSpeed - tempo.currentSpeed;
-  tempo.currentSpeed += speedDiff * 0.1; // Smooth interpolation
-  
-  tempo.lastUpdateTime = currentTime;
+// === PRECISE DURATION SYSTEM ===
+// Simple system for exact compositional timing control
+
+// Global composition timing tracking (optional)
+uint32_t compositionStartTime = 0;
+uint32_t compositionTotalDuration = 0;
+
+// Start composition timing tracking
+void startCompositionTiming(uint32_t totalDuration) {
+  compositionStartTime = millis();
+  compositionTotalDuration = totalDuration;
 }
 
-// Get current animation duration based on tempo
-uint16_t getAnimationDuration(uint16_t baseDuration) {
-  updateTempo();
-  return (uint16_t)(baseDuration / tempo.currentSpeed);
+// Get elapsed time in current composition (for debugging/monitoring)
+uint32_t getCompositionElapsed() {
+  if (compositionStartTime == 0) return 0;
+  return millis() - compositionStartTime;
 }
 
-// Get current delay duration based on tempo
-uint16_t getDelayDuration(uint16_t baseDelay) {
-  return (uint16_t)(baseDelay / tempo.currentSpeed);
+// Check if composition should be complete (for validation)
+bool isCompositionTimeComplete() {
+  if (compositionStartTime == 0 || compositionTotalDuration == 0) return false;
+  return getCompositionElapsed() >= compositionTotalDuration;
 }
+
+// === DECLARATIVE COMPOSITION SYSTEM ===
+
+// Command types for declarative animation sequences
+enum CommandType {
+  ANIMATE,      // Start animation on specified parts
+  WAIT,         // Wait for specified duration
+  WAIT_COMPLETE, // Wait for all active animations to complete
+  DEBUG_FLASH   // Flash first and last LEDs of all parts
+};
+
+// Animation command structure
+struct Command {
+  CommandType cmd;
+  uint8_t partMask;     // Bitmask: bit 0=Part1, bit 1=Part2, bit 2=Part3, bit 3=Part4
+  AnimationType type;
+  uint16_t duration;
+};
+
+// Composition definition - a sequence of commands with precise duration control
+struct Composition {
+  const char* name;
+  const Command* commands;
+  uint8_t commandCount;
+  bool looping;
+  uint32_t totalDuration;          // Total composition duration in ms (0 = no duration control)
+};
+
+// Part bitmask definitions (1-indexed)
+#define PART_1_MASK 0b0001  // Front A-Side
+#define PART_2_MASK 0b0010  // Front B-Side  
+#define PART_3_MASK 0b0100  // Back A-Side
+#define PART_4_MASK 0b1000  // Back B-Side
+
+#define FRONT_MASK  0b0011  // Parts 1 & 2
+#define BACK_MASK   0b1100  // Parts 3 & 4
+#define A_SIDE_MASK 0b0101  // Parts 1 & 3 (INVALID - violates constraint)
+#define B_SIDE_MASK 0b1010  // Parts 2 & 4 (INVALID - violates constraint)
+#define DIAGONAL_1_4_MASK 0b1001  // Parts 1 & 4 (diagonal - VALID)
+#define DIAGONAL_2_3_MASK 0b0110  // Parts 2 & 3 (diagonal - VALID)
+#define ALL_PARTS_MASK 0b1111  // All parts together (allowed for testing)
 
 // === ANIMATION FRAMEWORK PROTOTYPES ===
 void startAnimation(int partIndex, AnimationType type, uint16_t duration);
-void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint16_t duration);
-void startSequentialAnimation(int* partIndices, int count, AnimationType type, uint16_t duration, uint16_t delayBetween);
 void updateAllAnimations();
 void updatePartAnimation(int partIndex);
 void clearAllParts();
 bool isAnyPartActive();
+void debugFlashFirstLastLEDs(uint8_t brightness);
 
-// === HIGH-LEVEL COMPOSITION FUNCTIONS ===
-void createWavePattern(uint16_t baseDuration);
-void createOppositePairs(uint16_t baseDuration);
-void createAllTogether(uint16_t baseDuration);
-void createBreathingSequence(uint16_t baseDuration);
-void createChasePattern(uint16_t baseDuration);
-void createDoppelgangerPattern(uint16_t baseDuration);
+// === BUTTON CONTROL FUNCTIONS ===
+void handleButtonControl();
+
+// === DECLARATIVE ANIMATION FUNCTIONS ===
+bool isValidPartMask(uint8_t partMask);
+void executeCommand(const Command& cmd);
+void executeComposition(const Composition& comp);
+void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration);
+
+
+// === DECLARATIVE ANIMATION IMPLEMENTATIONS ===
+
+/*
+ * Validate that a part mask doesn't violate the front/back constraint
+ * Returns true if the mask is valid (never front and back simultaneously)
+ * EXCEPTION: ALL_PARTS_MASK (0b1111) is allowed for testing flash patterns
+ */
+bool isValidPartMask(uint8_t partMask) {
+  // Allow ALL_PARTS_MASK for testing purposes
+  if (partMask == ALL_PARTS_MASK) {
+    return true;
+  }
+  
+  // Allow diagonal patterns (1&4 or 2&3)
+  if (partMask == DIAGONAL_1_4_MASK || partMask == DIAGONAL_2_3_MASK) {
+    return true;
+  }
+  
+  bool hasFront = (partMask & FRONT_MASK) != 0;  // Check if any front parts (1&2)
+  bool hasBack = (partMask & BACK_MASK) != 0;    // Check if any back parts (3&4)
+  
+  // Check for invalid side combinations (1&3 or 2&4)
+  if (partMask == A_SIDE_MASK || partMask == B_SIDE_MASK) {
+    return false;
+  }
+  
+  return !(hasFront && hasBack);  // Invalid if both front AND back are on
+}
+
+/*
+ * Start animations on all parts specified in the bitmask
+ * partMask uses 1-indexed representation: bit 0=Part1, bit 1=Part2, etc.
+ */
+void animatePartsFromMask(uint8_t partMask, AnimationType type, uint16_t duration) {
+  for (int i = 0; i < NUM_PARTS; i++) {
+    if (partMask & (1 << i)) {  // Check if bit i is set
+      startAnimation(i, type, duration);  // i is 0-indexed for array access
+    }
+  }
+}
+
+/*
+ * Execute a single animation command
+ */
+void executeCommand(const Command& cmd) {
+  switch (cmd.cmd) {
+    case ANIMATE:
+      if (!isValidPartMask(cmd.partMask)) {
+        // Skip invalid commands - could add error handling here
+        return;
+      }
+      // Use fixed duration - tempo affects intensity, not timing
+      animatePartsFromMask(cmd.partMask, cmd.type, cmd.duration);
+      break;
+      
+    case WAIT:
+      {
+        // Use fixed delay with button checking every 10ms for responsiveness
+        uint32_t waitStart = millis();
+        while (millis() - waitStart < cmd.duration) {
+          handleButtonControl();
+          if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+            buttonPressed = false;
+            currentState = IDLE;
+            return; // Exit immediately to stop composition
+          }
+          delay(10);
+        }
+      }
+      break;
+      
+    case WAIT_COMPLETE:
+      while (isAnyPartActive()) {
+        handleButtonControl();  // Keep button responsive during animation waits
+        if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+          buttonPressed = false;
+          currentState = IDLE;
+          return; // Exit immediately to stop composition
+        }
+        updateAllAnimations();
+        delay(10);
+      }
+      break;
+      
+    case DEBUG_FLASH:
+      // Flash first and last LEDs of all parts
+      // Use duration as brightness (0-255)
+      debugFlashFirstLastLEDs((uint8_t)cmd.duration);
+      break;
+  }
+}
+
+/*
+ * Execute a complete composition (sequence of commands)
+ */
+void executeComposition(const Composition& comp) {
+  // Start composition timing if specified
+  if (comp.totalDuration > 0) {
+    startCompositionTiming(comp.totalDuration);
+  }
+  
+  clearAllParts();
+  
+  do {
+    for (int i = 0; i < comp.commandCount; i++) {
+      // Check for button press before executing each command
+      handleButtonControl();
+      if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+        buttonPressed = false;
+        currentState = IDLE;
+        return; // Exit composition immediately
+      }
+      
+      executeCommand(comp.commands[i]);
+      
+      // If executeCommand changed state to IDLE (button was pressed), exit
+      if (currentState == IDLE) {
+        return;
+      }
+      
+      // Update animations during execution
+      while (isAnyPartActive()) {
+        handleButtonControl();  // Keep button responsive during animations
+        if (buttonPressed && currentState == PLAYING_COMPOSITION) {
+          buttonPressed = false;
+          currentState = IDLE;
+          return; // Exit composition immediately
+        }
+        updateAllAnimations();
+        delay(10);
+      }
+    }
+  } while (comp.looping && currentState == PLAYING_COMPOSITION);
+}
+
+// === ANIMATION DEFINITIONS ===
+
+// Wave Pattern: Front wave (1→2), then Back wave (3→4)
+const Command waveCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 400},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_2_MASK, FADE_IN, 400},
+  {ANIMATE, FRONT_MASK, FADE_OUT, 400},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, FADE_IN, 400},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_4_MASK, FADE_IN, 400},
+  {ANIMATE, BACK_MASK, FADE_OUT, 400}
+};
+
+// Opposite Pairs: Front (1&2) together, then Back (3&4) together
+const Command oppositePairsCommands[] = {
+  {ANIMATE, FRONT_MASK, PULSE, 600},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, BACK_MASK, PULSE, 600},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// All Together: Rapid alternation between front and back
+const Command allTogetherCommands[] = {
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, FRONT_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, 0, FADE_OUT, 50},  // Clear all
+  {ANIMATE, BACK_MASK, FADE_IN, 100},
+  {WAIT, 0, OFF, 100}
+};
+
+// Breathing Sequence: 1→2→3→4 individual breathing
+const Command breathingSequenceCommands[] = {
+  {ANIMATE, PART_1_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_2_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_3_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  {ANIMATE, PART_4_MASK, BREATHE, 1200},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Chase Pattern: 1→2→3→4 with overlapping fades
+const Command chasePatternCommands[] = {
+  {ANIMATE, PART_1_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_1_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_2_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_2_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_3_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_3_MASK, FADE_OUT, 250},
+  {ANIMATE, PART_4_MASK, FADE_IN, 250},
+  {WAIT, 0, OFF, 125},
+  {ANIMATE, PART_4_MASK, FADE_OUT, 250},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Doppelganger Pattern: Showcases front/back alternation
+const Command doppelgangerPatternCommands[] = {
+  {ANIMATE, FRONT_MASK, PULSE, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, BACK_MASK, PULSE, 400},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_1_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_3_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_2_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 200},
+  {ANIMATE, PART_4_MASK, PULSE, 267},
+  {WAIT_COMPLETE, 0, OFF, 0}
+};
+
+// Composition definitions
+const Composition waveComposition = {
+  "Wave", waveCommands, sizeof(waveCommands)/sizeof(Command), false, 0
+};
+
+const Composition oppositePairsComposition = {
+  "Opposite Pairs", oppositePairsCommands, sizeof(oppositePairsCommands)/sizeof(Command), false, 0
+};
+
+const Composition allTogetherComposition = {
+  "All Together", allTogetherCommands, sizeof(allTogetherCommands)/sizeof(Command), false, 0
+};
+
+const Composition breathingSequenceComposition = {
+  "Breathing Sequence", breathingSequenceCommands, sizeof(breathingSequenceCommands)/sizeof(Command), false, 0
+};
+
+const Composition chasePatternComposition = {
+  "Chase Pattern", chasePatternCommands, sizeof(chasePatternCommands)/sizeof(Command), false, 0
+};
+
+const Composition doppelgangerComposition = {
+  "Doppelganger", doppelgangerPatternCommands, sizeof(doppelgangerPatternCommands)/sizeof(Command), false, 0
+};
+
+const Composition* compositions[] = {
+  &waveComposition,
+  &oppositePairsComposition,
+  &allTogetherComposition,
+  &breathingSequenceComposition,
+  &chasePatternComposition,
+  &doppelgangerComposition
+};
+
+#define NUM_COMPOSITIONS (sizeof(compositions)/sizeof(Composition*))
+
+// === COMPOSITION DEFINITIONS ===
+
+// Demo composition that cycles through individual compositions would need to be restructured
+// For now, we'll use individual compositions directly
+
+// Friend composition - minimalist, intimate, acoustic (2:11 duration)
+// Inspired by Ólafur Arnalds - "Saman"
+// Balanced front/back lighting with wipe animations and proper state management
+const Command friendCommands[] = {
+  // Opening dialogue - front awakening (0:00-0:20)
+  {ANIMATE, PART_1_MASK, WIPE_IN_FROM_BOTTOM, 3500},  // Part 1 awakens (OFF→ON)
+  {WAIT, 0, OFF, 600},                                 // Brief pause
+  {ANIMATE, PART_2_MASK, WIPE_IN_FROM_BOTTOM, 3500},  // Part 2 joins front (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},                                // Front pair lit
+  
+  // Completing the frame - back awakening (0:20-0:40)
+  {ANIMATE, FRONT_MASK, FADE_OUT, 2400},              // Front fades out (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},                                 // Brief darkness
+  {ANIMATE, PART_3_MASK, WIPE_IN_FROM_TOP, 3600},     // Part 3 awakens (OFF→ON)
+  {WAIT, 0, OFF, 800},
+  {ANIMATE, PART_4_MASK, WIPE_IN_FROM_TOP, 3600},     // Part 4 completes back (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2200},                                // Back pair lit - harmony
+  
+  // Alternating conversation - front/back dialogue (0:40-1:05)
+  {ANIMATE, BACK_MASK, WIPE_OUT_FROM_TOP, 2400},      // Back speaks by leaving (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},                                 // Brief darkness
+  {ANIMATE, FRONT_MASK, WIPE_IN_FROM_BOTTOM, 2500},   // Front returns (OFF→ON)
+  {WAIT, 0, OFF, 500},                                 // Front lit
+  {ANIMATE, FRONT_MASK, WIPE_OUT_FROM_BOTTOM, 2400},  // Front leaves (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},                                 // Brief darkness
+  {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 2500},       // Back returns (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1700},                                // Back lit - contemplation
+  
+  // Individual expressions - sequential solos (1:05-1:20)
+  {ANIMATE, BACK_MASK, FADE_OUT, 800},                // Clear back first (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {ANIMATE, PART_1_MASK, BREATHE, 2800},              // Part 1 breathes alone (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, PART_2_MASK, BREATHE, 2800},              // Part 2 breathes alone (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},
+  
+  // Diagonal patterns - new feature (1:20-1:35)
+  {ANIMATE, DIAGONAL_1_4_MASK, PULSE, 2200},          // Parts 1&4 diagonal pulse (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 400},
+  {ANIMATE, DIAGONAL_2_3_MASK, PULSE, 2200},          // Parts 2&3 diagonal pulse (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},
+  {ANIMATE, DIAGONAL_1_4_MASK, BREATHE, 2600},        // Parts 1&4 diagonal breathe (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 350},
+  {ANIMATE, DIAGONAL_2_3_MASK, BREATHE, 2600},        // Parts 2&3 diagonal breathe (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 800},                                 // Diagonal patterns complete
+  
+  // Wave pattern - sequential individual parts (1:35-1:42)
+  {ANIMATE, PART_1_MASK, WIPE_OUT_FROM_TOP, 1200},    // Wave starts (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_2_MASK, WIPE_OUT_FROM_TOP, 1200},    // Wave continues (OFF→OFF, no-op)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_3_MASK, WIPE_OUT_FROM_BOTTOM, 1200}, // Wave to back (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 100},
+  {ANIMATE, PART_4_MASK, WIPE_OUT_FROM_BOTTOM, 1200}, // Wave completes (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 600},                                 // Brief all-dark pause
+  
+  // Final emergence - front then back awakening (1:42-2:05)
+  {ANIMATE, FRONT_MASK, WIPE_IN_FROM_BOTTOM, 3000},   // Front rises (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1400},                                // Front moment
+  {ANIMATE, FRONT_MASK, FADE_OUT, 1500},              // Front fades (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 600},                                 // Brief silence
+  {ANIMATE, BACK_MASK, WIPE_IN_FROM_TOP, 1500},       // Back descends (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 2000},                                // Extended back moment
+  
+  // Final dialogue - gentle alternation (2:05-2:11)
+  {ANIMATE, BACK_MASK, BREATHE, 2200},                // Back breathes (ON→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 500},                                 // Pause
+  {ANIMATE, BACK_MASK, FADE_OUT, 1000},               // Back fades (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 300},                                 // Brief darkness
+  {ANIMATE, FRONT_MASK, FADE_IN, 1400},               // Front returns gently (OFF→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1000},                                // Front contemplation
+  {ANIMATE, FRONT_MASK, PULSE, 1800},                 // Front pulses farewell (ON→ON)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 600},                                 // Final pause
+  {ANIMATE, FRONT_MASK, FADE_OUT, 2200},              // Final fade to silence (ON→OFF)
+  {WAIT_COMPLETE, 0, OFF, 0},
+  {WAIT, 0, OFF, 1200}                                 // Extended silence
+};
+
+// Friend composition - intimate, acoustic feeling  
+const Composition friendCompositionSaman = {
+  "Friend - Saman",
+  friendCommands,
+  sizeof(friendCommands)/sizeof(Command),
+  true,         // Loop indefinitely  
+  131000        // Precise duration: 2:11 = 131 seconds
+};
+
+// Debug animation - flashes first and last LEDs of each part for identification
+
+const Command debugCommands[] = {
+  // Flash first and last LEDs bright
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 200},                      // Brief pause
+  
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility  
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 200},                      // Brief pause
+  
+  {DEBUG_FLASH, 0, OFF, 255},               // Full brightness flash
+  {WAIT, 0, OFF, 300},                      // Hold for visibility
+  {DEBUG_FLASH, 0, OFF, 0},                 // Turn off
+  {WAIT, 0, OFF, 500}                       // Longer pause after debug
+};
+
+const Composition debugComposition = {
+  "Debug - First/Last LEDs",
+  debugCommands,
+  sizeof(debugCommands)/sizeof(Command),
+  false,
+  0
+};
+
+// === EASING FUNCTIONS ===
+
+/*
+ * Easing functions provide natural motion curves instead of linear progression
+ * All functions take a progress value from 0.0 to 1.0 and return an eased value
+ */
+
+// Ease in (slow start, accelerating)
+float easeIn(float t) {
+  return t * t * t;  // Cubic ease-in
+}
+
+// Ease out (fast start, decelerating) 
+float easeOut(float t) {
+  float f = t - 1.0;
+  return f * f * f + 1.0;  // Cubic ease-out
+}
+
+// Ease in-out (slow start and end, fast middle)
+float easeInOut(float t) {
+  if (t < 0.5) {
+    return 4.0 * t * t * t;  // First half: ease-in
+  } else {
+    float f = 2.0 * t - 2.0;
+    return 1.0 + f * f * f / 2.0;  // Second half: ease-out
+  }
+}
 
 // === ANIMATION FRAMEWORK IMPLEMENTATION ===
 
 /*
  * Start an animation on a single part
  * 
- * partIndex: Which part to animate (0-3)
+ * partIndex: Which part to animate (0-3, maps to Parts 1-4 in bitmask system)
  * type: What kind of animation to run
  * duration: How long the animation should take in milliseconds
  * 
- * This is the fundamental building block - all other animation functions
- * ultimately call this to start individual part animations.
+ * NOTE: This function uses 0-indexed arrays internally but the declarative
+ * system uses 1-indexed bitmasks. partIndex 0 = Part 1, partIndex 1 = Part 2, etc.
+ * 
+ * This is the fundamental building block - the declarative system calls this
+ * via animatePartsFromMask() to start individual part animations.
  */
 void startAnimation(int partIndex, AnimationType type, uint16_t duration) {
   if (partIndex >= NUM_PARTS) return;
@@ -185,39 +672,6 @@ void startAnimation(int partIndex, AnimationType type, uint16_t duration) {
   part->animation.isActive = true;
 }
 
-/*
- * Start the same animation on multiple parts simultaneously
- * 
- * Example usage:
- *   int corners[] = {0, 3}; // Opposite corners
- *   startAnimationOnParts(corners, 2, PULSE, 2000);
- * 
- * This creates synchronized effects across multiple parts.
- */
-void startAnimationOnParts(int* partIndices, int count, AnimationType type, uint16_t duration) {
-  for (int i = 0; i < count; i++) {
-    startAnimation(partIndices[i], type, duration);
-  }
-}
-
-/*
- * Start animations in sequence with delays between each
- * 
- * Example usage:
- *   int wave[] = {0, 1, 2, 3}; // All parts in order
- *   startSequentialAnimation(wave, 4, FADE_IN, 2000, 500);
- * 
- * This creates wave-like effects that flow across the parts.
- * Each animation starts 'delayBetween' milliseconds after the previous one.
- */
-void startSequentialAnimation(int* partIndices, int count, AnimationType type, uint16_t duration, uint16_t delayBetween) {
-  for (int i = 0; i < count; i++) {
-    startAnimation(partIndices[i], type, duration);
-    if (i < count - 1) { // Don't delay after the last animation
-      delay(delayBetween);
-    }
-  }
-}
 
 /*
  * Update all active animations and refresh the LED strips
@@ -255,19 +709,30 @@ void updatePartAnimation(int partIndex) {
   if (elapsed >= part->animation.duration) {
     part->animation.isActive = false;
     
-    // Ensure final state is correct
-    if (part->animation.type == FADE_OUT || part->animation.type == OFF) {
-      part->currentBrightness = 0;
-    } else if (part->animation.type == FADE_IN) {
-      part->currentBrightness = 255;
-    } else {
-      // For PULSE and BREATHE, end at 0
-      part->currentBrightness = 0;
-    }
-    
-    // Explicitly set all LEDs in this part to the final brightness
-    for (int i = part->startLED; i <= part->endLED; i++) {
-      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, part->currentBrightness));
+    // Ensure final state is correct based on animation type
+    switch (part->animation.type) {
+      case FADE_OUT:
+      case OFF:
+      case PULSE:
+      case BREATHE:
+      case WIPE_OUT_FROM_TOP:
+      case WIPE_OUT_FROM_BOTTOM:
+        part->currentBrightness = 0;
+        // Set all LEDs to off
+        for (int i = part->startLED; i <= part->endLED; i++) {
+          part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
+        }
+        break;
+        
+      case FADE_IN:
+      case WIPE_IN_FROM_TOP:
+      case WIPE_IN_FROM_BOTTOM:
+        part->currentBrightness = 255;
+        // Set all LEDs to full brightness
+        for (int i = part->startLED; i <= part->endLED; i++) {
+          part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 255));
+        }
+        break;
     }
     return;
   }
@@ -314,6 +779,14 @@ void updatePartAnimation(int partIndex) {
       }
       break;
       
+    case WIPE_IN_FROM_TOP:
+    case WIPE_IN_FROM_BOTTOM:
+    case WIPE_OUT_FROM_TOP:
+    case WIPE_OUT_FROM_BOTTOM:
+      // Wipe animations are handled LED by LED, brightness set to full
+      brightness = 255;
+      break;
+      
     case OFF:
       brightness = 0;
       break;
@@ -321,10 +794,91 @@ void updatePartAnimation(int partIndex) {
   
   part->currentBrightness = brightness;
   
-  // Update all LEDs in this part to the calculated brightness
-  // Using white channel (4th parameter) for GRBW strips
-  for (int i = part->startLED; i <= part->endLED; i++) {
-    part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, brightness));
+  // Handle wipe animations LED by LED, others apply to all LEDs
+  if (part->animation.type == WIPE_IN_FROM_TOP || 
+      part->animation.type == WIPE_IN_FROM_BOTTOM ||
+      part->animation.type == WIPE_OUT_FROM_TOP || 
+      part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+    
+    int totalLEDs = part->endLED - part->startLED + 1;
+    
+    // Apply symmetrical easing to all wipe animations for consistent, natural movement
+    float easedProgress = easeInOut(progress);  // Symmetrical: slow start, fast middle, slow end
+    
+    // Calculate position with sub-LED precision for smooth fading
+    float exactPosition = totalLEDs * easedProgress;
+    int activeLEDs = (int)exactPosition;
+    float fadeAmount = exactPosition - activeLEDs;  // Fractional part for fade
+    
+    // Clear all LEDs first
+    for (int i = part->startLED; i <= part->endLED; i++) {
+      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, 0));
+    }
+    
+    // Light LEDs based on wipe direction and type with fading
+    for (int i = 0; i <= activeLEDs && i < totalLEDs; i++) {
+      int ledIndex;
+      uint8_t ledBrightness = 0;
+      bool isWipeIn = (part->animation.type == WIPE_IN_FROM_TOP || part->animation.type == WIPE_IN_FROM_BOTTOM);
+      
+      // Calculate LED index based on direction
+      switch (part->animation.type) {
+        case WIPE_IN_FROM_TOP:
+        case WIPE_OUT_FROM_TOP:
+          ledIndex = part->startLED + i;
+          break;
+          
+        case WIPE_IN_FROM_BOTTOM:
+        case WIPE_OUT_FROM_BOTTOM:
+          ledIndex = part->endLED - i;
+          break;
+          
+        default:
+          continue;
+      }
+      
+      // Skip if LED index is out of bounds
+      if (ledIndex < part->startLED || ledIndex > part->endLED) continue;
+      
+      // Calculate brightness with fading
+      if (i < activeLEDs) {
+        // Fully lit LEDs
+        ledBrightness = isWipeIn ? 255 : 0;
+      } else if (i == activeLEDs && fadeAmount > 0) {
+        // Fading LED at the edge
+        if (isWipeIn) {
+          ledBrightness = (uint8_t)(255 * fadeAmount);
+        } else {
+          ledBrightness = (uint8_t)(255 * (1.0 - fadeAmount));
+        }
+      }
+      
+      part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, ledBrightness));
+    }
+    
+    // For wipe out animations, light the remaining unwiped LEDs
+    if (part->animation.type == WIPE_OUT_FROM_TOP || part->animation.type == WIPE_OUT_FROM_BOTTOM) {
+      for (int i = activeLEDs + 1; i < totalLEDs; i++) {
+        int ledIndex;
+        
+        if (part->animation.type == WIPE_OUT_FROM_TOP) {
+          ledIndex = part->startLED + i;
+        } else {  // WIPE_OUT_FROM_BOTTOM
+          ledIndex = part->endLED - i;
+        }
+        
+        if (ledIndex >= part->startLED && ledIndex <= part->endLED) {
+          part->strip->setPixelColor(ledIndex, part->strip->Color(0, 0, 0, 255));
+        }
+      }
+    }
+    
+  } else {
+    // Standard animations: apply brightness to all LEDs in the part
+    // Using white channel (4th parameter) for GRBW strips
+    for (int i = part->startLED; i <= part->endLED; i++) {
+      part->strip->setPixelColor(i, part->strip->Color(0, 0, 0, brightness));
+    }
   }
 }
 
@@ -371,6 +925,85 @@ bool isAnyPartActive() {
   return false;
 }
 
+/*
+ * Debug function: Flash only the first and last LED of each part
+ * Used for testing to identify part boundaries
+ */
+void debugFlashFirstLastLEDs(uint8_t brightness) {
+  for (int i = 0; i < NUM_PARTS; i++) {
+    LEDPart* part = &parts[i];
+    
+    // Light first LED (startLED)
+    part->strip->setPixelColor(part->startLED, part->strip->Color(0, 0, 0, brightness));
+    
+    // Light last LED (endLED) 
+    part->strip->setPixelColor(part->endLED, part->strip->Color(0, 0, 0, brightness));
+    
+    // Turn off all LEDs in between
+    for (int j = part->startLED + 1; j < part->endLED; j++) {
+      part->strip->setPixelColor(j, part->strip->Color(0, 0, 0, 0));
+    }
+  }
+  
+  // Update all strips
+  strip1.show();
+  strip2.show();
+  strip3.show();
+  strip4.show();
+}
+
+// === IDLE STATE IMPLEMENTATION ===
+
+/*
+ * Idle state with all lights off
+ * Keeps all LEDs turned off while waiting for button press
+ */
+void updateIdleState() {
+  if (idleStartTime == 0) {
+    idleStartTime = millis();
+  }
+  
+  // Keep all LEDs off in idle mode
+  for (int i = 0; i < NUM_PARTS; i++) {
+    LEDPart* part = &parts[i];
+    for (int j = part->startLED; j <= part->endLED; j++) {
+      part->strip->setPixelColor(j, part->strip->Color(0, 0, 0, 0));
+    }
+  }
+  
+  // Update all strips to ensure they remain off
+  strip1.show();
+  strip2.show();
+  strip3.show();
+  strip4.show();
+}
+
+// === BUTTON CONTROL IMPLEMENTATION ===
+
+/*
+ * Handle button input and control LED
+ * Detects button presses to trigger composition playback
+ */
+void handleButtonControl() {
+  buttonState = digitalRead(BUTTON_PIN);
+  
+  // Control LED based on system state
+  if (currentState == IDLE) {
+    digitalWrite(CONTROL_LED_PIN, HIGH);  // LED on during idle
+  } else {
+    digitalWrite(CONTROL_LED_PIN, LOW);   // LED off during composition
+  }
+  
+  // Detect button press (transition from HIGH to LOW)
+  if (buttonState != lastButtonState) {
+    if (buttonState == LOW && lastButtonState == HIGH) {
+      // Button was just pressed
+      buttonPressed = true;
+    }
+    lastButtonState = buttonState;
+  }
+}
+
 // === SETUP ===
 void setup()
 {
@@ -391,6 +1024,10 @@ void setup()
   strip4.setBrightness(BRIGHTNESS);
   strip4.show();
   
+  // Initialize button and control LED
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(CONTROL_LED_PIN, OUTPUT);
+  
   // Start with all parts off
   clearAllParts();
 }
@@ -398,290 +1035,35 @@ void setup()
 // === MAIN LOOP ===
 void loop()
 {
-  // Demonstrate different animation patterns that respect the physical constraints
-  // Each pattern ensures A-side parts (0&2) and B-side parts (1&3) are never on simultaneously
-  // Now with dynamic tempo that accelerates and decelerates over time!
+  // Handle button control continuously
+  handleButtonControl();
   
-  createWavePattern(800);         // Constraint-safe wave: 0→3→1→2
-  delay(getDelayDuration(300));
-  
-  createOppositePairs(600);       // Only diagonal pairs: 0&3, then 1&2
-  delay(getDelayDuration(300));
-  
-  createAllTogether(1000);        // Rapid alternating diagonals
-  delay(getDelayDuration(300));
-  
-  createBreathingSequence(1200);  // Sequential breathing: 0→3→1→2
-  delay(getDelayDuration(300));
-  
-  createChasePattern(1000);       // Constraint-safe chase
-  delay(getDelayDuration(300));
-  
-  createDoppelgangerPattern(800); // Special doppelganger effect
-  delay(getDelayDuration(500));
-}
-
-// === HIGH-LEVEL COMPOSITION FUNCTIONS ===
-// These demonstrate different patterns you can create by combining
-// the basic animation functions in various ways.
-
-/*
- * WAVE PATTERN
- * Creates a wave effect that alternates between front and back.
- * Wave flows across the front, then across the back.
- * 
- * Pattern: Front wave (0 → 1), then Back wave (2 → 3)
- */
-void createWavePattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Front wave: 0 → 1
-  int frontSequence[] = {0, 1};
-  startSequentialAnimation(frontSequence, 2, FADE_IN, duration / 2, duration / 4);
-  
-  // Wait for front wave to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  // Fade out front
-  startSequentialAnimation(frontSequence, 2, FADE_OUT, duration / 2, duration / 4);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(getDelayDuration(200));
-  
-  // Back wave: 2 → 3
-  int backSequence[] = {2, 3};
-  startSequentialAnimation(backSequence, 2, FADE_IN, duration / 2, duration / 4);
-  
-  // Wait for back wave to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  // Fade out back
-  startSequentialAnimation(backSequence, 2, FADE_OUT, duration / 2, duration / 4);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
+  switch (currentState) {
+    case IDLE:
+      // Update idle state with gentle pulsing
+      updateIdleState();
+      
+      // Check if button was pressed to start composition
+      if (buttonPressed) {
+        buttonPressed = false; // Clear the flag
+        currentState = PLAYING_COMPOSITION;
+        clearAllParts(); // Clear idle state before starting composition
+        delay(50); // Brief pause for clean transition
+      }
+      
+      // Small delay to prevent overwhelming the processor
+      delay(20);
+      break;
+      
+    case PLAYING_COMPOSITION:
+      // Play the main composition (now loops indefinitely)
+      executeComposition(friendCompositionSaman);
+      
+      // Only reach here if composition was interrupted by button press
+      // State is already set to IDLE in executeComposition when button pressed
+      idleStartTime = 0; // Reset idle timing
+      clearAllParts(); // Ensure clean transition to idle
+      delay(100); // Brief pause before starting idle
+      break;
   }
 }
-
-/*
- * OPPOSITE PAIRS PATTERN  
- * Alternates between front pairs and back pairs.
- * Shows the "doppelganger" effect by switching between front and back views.
- * 
- * Pattern: Front (0&1) together, then Back (2&3) together
- */
-void createOppositePairs(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(500);
-  
-  // Front pair: Parts 0 and 1 together
-  int frontPair[] = {0, 1};
-  startAnimationOnParts(frontPair, 2, PULSE, duration);
-  
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Back pair: Parts 2 and 3 together
-  int backPair[] = {2, 3};
-  startAnimationOnParts(backPair, 2, PULSE, duration);
-  
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
-/*
- * ALL TOGETHER PATTERN
- * Since we can't have front and back on simultaneously,
- * this alternates rapidly between "all front" and "all back".
- * 
- * Pattern: Front (0&1) and Back (2&3) alternate rapidly
- */
-void createAllTogether(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Alternate between front and back rapidly
-  uint32_t startTime = millis();
-  uint16_t switchInterval = duration / 10; // Switch every 1/10th of duration
-  
-  while (millis() - startTime < duration) {
-    // Front parts: 0 & 1
-    int frontParts[] = {0, 1};
-    startAnimationOnParts(frontParts, 2, FADE_IN, switchInterval);
-    
-    // Wait for switch interval
-    uint32_t phaseStart = millis();
-    while (millis() - phaseStart < switchInterval) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    // Clear and switch to back parts: 2 & 3
-    clearAllParts();
-    int backParts[] = {2, 3};
-    startAnimationOnParts(backParts, 2, FADE_IN, switchInterval);
-    
-    // Wait for switch interval
-    phaseStart = millis();
-    while (millis() - phaseStart < switchInterval) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    clearAllParts();
-  }
-}
-
-/*
- * BREATHING SEQUENCE PATTERN
- * Each part breathes individually, alternating between front and back.
- * 
- * Pattern: Front A (0) → Front B (1) → Back A (2) → Back B (3)
- */
-void createBreathingSequence(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(500);
-  
-  // Breathing sequence: 0 → 1 → 2 → 3
-  int sequence[] = {0, 1, 2, 3};
-  
-  for (int i = 0; i < 4; i++) {
-    startAnimation(sequence[i], BREATHE, duration);
-    
-    while (isAnyPartActive()) {
-      updateAllAnimations();
-      delay(10);
-    }
-    
-    if (i < 3) { // Don't delay after the last part
-      delay(delayTime);
-    }
-  }
-}
-
-/*
- * CHASE PATTERN
- * Creates a chase effect that moves across front, then back.
- * Each part lights up briefly in sequence.
- * 
- * Pattern: 0 → 1 → 2 → 3 with overlapping fades
- */
-void createChasePattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  
-  // Chase pattern: 0 → 1 → 2 → 3
-  int sequence[] = {0, 1, 2, 3};
-  
-  for (int i = 0; i < 4; i++) {
-    startAnimation(sequence[i], FADE_IN, duration / 4);
-    
-    // Wait a bit, then start fading out while next one starts
-    delay(duration / 8);
-    startAnimation(sequence[i], FADE_OUT, duration / 4);
-    
-    // Keep updating animations during the chase
-    for (int j = 0; j < 20; j++) {
-      updateAllAnimations();
-      delay(duration / 160); // Small delay for smooth animation
-    }
-  }
-  
-  // Wait for all animations to complete
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
-/*
- * DOPPELGANGER SPECIAL PATTERN
- * Showcases the front/back alternation effect.
- * Shows front view, then back view, creating a "flip" effect.
- * 
- * Pattern: All Front → All Back → Individual Front → Individual Back
- */
-void createDoppelgangerPattern(uint16_t baseDuration) {
-  clearAllParts();
-  
-  uint16_t duration = getAnimationDuration(baseDuration);
-  uint16_t delayTime = getDelayDuration(200);
-  
-  // Show all front (Parts 0 & 1)
-  int frontParts[] = {0, 1};
-  startAnimationOnParts(frontParts, 2, PULSE, duration / 2);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Show all back (Parts 2 & 3) - the doppelganger view
-  int backParts[] = {2, 3};
-  startAnimationOnParts(backParts, 2, PULSE, duration / 2);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual front A (Part 0)
-  startAnimation(0, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual back A (Part 2) - doppelganger of Part 0
-  startAnimation(2, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual front B (Part 1)
-  startAnimation(1, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-  
-  delay(delayTime);
-  
-  // Individual back B (Part 3) - doppelganger of Part 1
-  startAnimation(3, PULSE, duration / 3);
-  while (isAnyPartActive()) {
-    updateAllAnimations();
-    delay(10);
-  }
-}
-
